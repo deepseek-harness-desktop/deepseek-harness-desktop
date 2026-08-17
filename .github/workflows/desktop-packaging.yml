@@ -1,6 +1,9 @@
 name: Desktop packaging
 
 on:
+  push:
+    branches:
+      - 'codex/**'
   pull_request:
     paths:
       - 'apps/desktop/**'
