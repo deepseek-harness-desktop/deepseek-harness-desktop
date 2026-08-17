@@ -103,3 +103,47 @@ export interface HarnessSdkRequestMap {
   'session/prompt': { params: SessionPromptParams; result: SessionPromptResult }
   'shutdown': { params: undefined; result: Record<string, never> }
 }
+
+/** Parameters for the desktop runtime handshake. */
+export interface DesktopRuntimeInitializeParams {
+  /** Working directory used by the composed Harness runtime. */
+  cwd: string
+  /** Optional environment values owned by the desktop launcher. */
+  environment?: Record<string, string>
+}
+
+/** Generic desktop API invocation carried over the sidecar transport. */
+export interface DesktopApiInvokeParams {
+  /** Connection channel, normally `/api`. */
+  channel: string
+  /** Channel-relative endpoint such as `session.list`. */
+  endpoint: string
+  /** Existing API request envelope, including its rpcId and payload. */
+  request: unknown
+}
+
+/** Desktop event-stream subscription parameters. */
+export interface DesktopStreamOpenParams {
+  /** Stream identifier allocated by the client. */
+  streamId: string
+  /** `mux` or `host`. */
+  stream: 'mux' | 'host'
+  /** Existing event-stream request envelope. */
+  request: unknown
+}
+
+/** Event emitted by the desktop sidecar for one subscribed stream. */
+export interface DesktopStreamFrameNotification {
+  /** Client-owned stream identifier. */
+  streamId: string
+  /** Existing `RpcRequest<MuxFrame>` or `RpcRequest<HostFrame>` value. */
+  frame: unknown
+}
+
+/** Runtime failure notification which is not an API business response. */
+export interface DesktopRuntimeErrorNotification {
+  /** Stable runtime error category. */
+  code: string
+  /** Human-readable diagnostic. */
+  message: string
+}

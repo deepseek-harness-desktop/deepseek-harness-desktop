@@ -1,0 +1,111 @@
+# Desktop profile: shared agent runtime plus stdio IPC. The Tauri shell owns
+# the window and forwards these protocol frames through its Rust bridge.
+- insert:
+    - id: storage
+      name: '@deepseek-ai/dsh-storage'
+
+    - id: storage-json
+      name: '@deepseek-ai/dsh-storage-json'
+      config:
+        root: !!js dshHomePath('storages')
+
+    - id: storage-domain
+      name: '@deepseek-ai/dsh-storage-domain'
+      config:
+        backend: json
+
+    - id: workspace
+      name: '@deepseek-ai/dsh-workspace'
+
+    - id: directory-picker
+      name: '@deepseek-ai/dsh-host-directory-picker-auto'
+
+    # Keep the route registry required by the shared Host and Connection
+    # plugins, but do not bind a local TCP port in the desktop process.
+    - id: webserver
+      name: '@deepseek-ai/dsh-host-webserver'
+      config:
+        listen: false
+        host: 127.0.0.1
+        port: 0
+
+    - id: api-gateway
+      name: '@deepseek-ai/dsh-host-apiproxy'
+
+    - id: desktop-ipc-server
+      name: '@deepseek-ai/dsh-desktop-ipc-server'
+      inject: [apiProxy]
+
+    # Browser plugin roster. Tauri retrieves the composed graph and bundles
+    # through the desktop IPC server instead of opening an HTTP listener.
+    - id: modules
+      name: '@deepseek-ai/dsh-client-modules'
+    - id: connection
+      name: '@deepseek-ai/dsh-client-connection'
+    - id: api-remotes
+      name: '@deepseek-ai/dsh-api-remotes'
+    - id: client-runtime
+      name: '@deepseek-ai/dsh-client-runtime'
+    - id: cordis-client-runner
+      name: '@deepseek-ai/dsh-cordis-client-runner'
+    - id: ui-theme
+      name: '@deepseek-ai/dsh-client-ui-theme'
+    - id: locale
+      name: '@deepseek-ai/dsh-client-locale'
+    - id: ui-layout
+      name: '@deepseek-ai/dsh-client-ui-layout'
+    - id: ui-sidebar
+      name: '@deepseek-ai/dsh-client-ui-sidebar'
+    - id: ui-settings
+      name: '@deepseek-ai/dsh-client-ui-settings'
+    - id: ui-settings-general
+      name: '@deepseek-ai/dsh-client-ui-settings-general'
+    - id: ui-settings-models
+      name: '@deepseek-ai/dsh-client-ui-settings-models'
+    - id: ui-settings-plugin-inventory
+      name: '@deepseek-ai/dsh-client-ui-settings-plugin-inventory'
+    - id: ui-conversation
+      name: '@deepseek-ai/dsh-client-ui-conversation'
+    - id: ui-tool
+      name: '@deepseek-ai/dsh-client-ui-tool'
+    - id: ui-cordis
+      name: '@deepseek-ai/dsh-client-ui-cordis'
+    - id: ui-workflow-run
+      name: '@deepseek-ai/dsh-client-ui-workflow-run'
+    - id: ui-deliverables
+      name: '@deepseek-ai/dsh-client-ui-deliverables'
+    - id: ui-workspace
+      name: '@deepseek-ai/dsh-client-ui-workspace'
+    - id: ui-input-trigger
+      name: '@deepseek-ai/dsh-client-ui-input-trigger'
+    - id: ui-commands
+      name: '@deepseek-ai/dsh-client-ui-commands'
+    - id: ui-skill
+      name: '@deepseek-ai/dsh-client-ui-skill'
+    - id: ui-subagent
+      name: '@deepseek-ai/dsh-client-ui-subagent'
+    - id: ui-jobs
+      name: '@deepseek-ai/dsh-client-ui-jobs'
+    - id: ui-goal
+      name: '@deepseek-ai/dsh-client-ui-goal'
+    - id: ui-message-feedback
+      name: '@deepseek-ai/dsh-client-ui-message-feedback'
+    - id: ui-model-selection
+      name: '@deepseek-ai/dsh-client-ui-model-selection'
+    - id: ui-permission
+      name: '@deepseek-ai/dsh-client-ui-permission-presets'
+    - id: ui-agent-preset
+      name: '@deepseek-ai/dsh-client-ui-agent-preset'
+    - id: ui-settings-plugins
+      name: '@deepseek-ai/dsh-client-ui-settings-plugins'
+    - id: ui-plan
+      name: '@deepseek-ai/dsh-client-ui-plan'
+    - id: ui-user-questions
+      name: '@deepseek-ai/dsh-client-ui-user-questions'
+    - id: ui-trajectory
+      name: '@deepseek-ai/dsh-client-ui-trajectory'
+
+    - id: agent-presets
+      name: '@deepseek-ai/dsh-agent-presets'
+      config:
+        default: standard

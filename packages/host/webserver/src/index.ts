@@ -43,6 +43,8 @@ export interface WebUpgradeRoute {
 
 /** Gateway config: the listen address. */
 export interface Config {
+  /** Whether to bind a TCP listener; desktop keeps route registries without one. */
+  listen: boolean
   /** Listen host; the two supported values are loopback and all-interfaces. */
   host: '127.0.0.1' | '0.0.0.0'
   /** Listen port; zero requests an OS-assigned port. */
@@ -58,6 +60,7 @@ export interface Config {
  */
 export class WebServer extends Service {
   static Config: z<Config> = z.object({
+    listen: z.boolean().default(true),
     host: z.union([z.const('127.0.0.1'), z.const('0.0.0.0')]).required(),
     port: z.natural().max(65535).required(),
   })
@@ -146,6 +149,10 @@ export class WebServer extends Service {
 
   /** Listen; resolves once the socket is bound (rejection = FAILED fiber). */
   async [Service.init](): Promise<void> {
+    if (!this.config.listen) {
+      this.listenedPort = this.config.port
+      return
+    }
     const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
       /* v8 ignore next -- `?? '/'` arm: node:http always sets url on server
       requests; the field is only optional on the client-side IncomingMessage type */
