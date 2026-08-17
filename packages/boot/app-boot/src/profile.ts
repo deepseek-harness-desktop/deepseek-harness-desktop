@@ -114,6 +114,7 @@ export function resolveProfileDir(name: string, home: string = resolveDshHome())
 export const PROFILE_TEMPLATES: Record<string, readonly string[]> = {
   web: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'],
   headless: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless'],
+  desktop: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-desktop'],
 }
 
 /** Installation-owned bundle tuples normalized to the shipped template. */

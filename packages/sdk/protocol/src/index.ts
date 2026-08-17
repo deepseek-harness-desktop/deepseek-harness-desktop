@@ -22,4 +22,9 @@ export type {
   SessionPromptResult,
   SubagentFinishedNotification,
   SubagentStartedNotification,
+  DesktopRuntimeInitializeParams,
+  DesktopApiInvokeParams,
+  DesktopStreamOpenParams,
+  DesktopStreamFrameNotification,
+  DesktopRuntimeErrorNotification,
 } from './types.ts'

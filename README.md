@@ -34,6 +34,9 @@ pnpm run build
 pnpm dsh web
 ```
 
+The Tauri desktop shell is documented in [Desktop application](docs/desktop.md)
+and can be started with `pnpm run dev:desktop`.
+
 ## Community and support
 
 - Feel free to submit feedback or bug reports through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).

@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.client.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../packages/client/web" },
+    { "path": "../../packages/client/modules" }
+  ]
+}

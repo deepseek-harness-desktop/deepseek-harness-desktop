@@ -1,0 +1,69 @@
+name: Desktop packaging
+
+on:
+  pull_request:
+    paths:
+      - 'apps/desktop/**'
+      - 'packages/**'
+      - 'scripts/build-desktop-sidecar.ts'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/desktop-packaging.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DSH_TELEMETRY_DISABLED: '1'
+
+jobs:
+  package:
+    name: ${{ matrix.os }} desktop package
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: macos-dmg
+            path: apps/desktop/src-tauri/target/debug/bundle/dmg/*.dmg
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: windows-installers
+            path: |
+              apps/desktop/src-tauri/target/debug/bundle/msi/*.msi
+              apps/desktop/src-tauri/target/debug/bundle/nsis/*.exe
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Harness artifacts
+        run: pnpm run build
+
+      - name: Build desktop sidecar
+        run: pnpm exec tsx scripts/build-desktop-sidecar.ts --skip-build --target ${{ matrix.target }}
+
+      - name: Build Tauri installers
+        working-directory: apps/desktop
+        run: pnpm tauri build --debug
+
+      - name: Upload desktop installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.path }}
+          if-no-files-found: error
