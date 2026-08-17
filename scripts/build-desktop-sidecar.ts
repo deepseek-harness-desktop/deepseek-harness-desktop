@@ -12,6 +12,7 @@ const root = resolve(import.meta.dirname, '..')
 const staging = resolve(root, 'apps/desktop/.sidecar')
 const binaries = resolve(root, 'apps/desktop/src-tauri/binaries')
 const pkgSpec = '@yao-pkg/pkg@6.21.0'
+const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
 
 interface Target { tauri: string; pkg: string; extension: string }
 
@@ -43,10 +44,10 @@ async function main(): Promise<void> {
   const args = parseArgs({ options: { 'skip-build': { type: 'boolean', default: false }, target: { type: 'string' } } }).values
   const triple = args.target ?? process.env['TAURI_ENV_TARGET_TRIPLE'] ?? await hostTriple()
   const target = targetFor(triple)
-  if (!args['skip-build']) await run('pnpm', ['run', 'build'])
+  if (!args['skip-build']) await run(pnpmCommand, ['run', 'build'])
 
   await rm(staging, { recursive: true, force: true })
-  await run('pnpm', ['deploy', '--filter', '@deepseek-ai/dsh', '--prod', '--legacy', '--ignore-scripts', '--config.node-linker=hoisted', '--config.auto-install-peers=false', '--config.link-workspace-packages=true', staging])
+  await run(pnpmCommand, ['deploy', '--filter', '@deepseek-ai/dsh', '--prod', '--legacy', '--ignore-scripts', '--config.node-linker=hoisted', '--config.auto-install-peers=false', '--config.link-workspace-packages=true', staging])
 
   const manifestPath = join(staging, 'package.json')
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<string, unknown>
@@ -58,7 +59,7 @@ async function main(): Promise<void> {
 
   await mkdir(binaries, { recursive: true })
   const output = join(binaries, `dsh-desktop-runtime-${target.tauri}${target.extension}`)
-  await run('pnpm', ['dlx', pkgSpec, staging, '--sea', '--targets', target.pkg, '--output', output])
+  await run(pnpmCommand, ['dlx', pkgSpec, staging, '--sea', '--targets', target.pkg, '--output', output])
   if (!existsSync(output)) throw new Error(`build-desktop-sidecar: pkg did not produce ${output}`)
   console.log(`build-desktop-sidecar: created ${output}`)
 }
