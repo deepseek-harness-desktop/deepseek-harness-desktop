@@ -30,7 +30,11 @@ function targetFor(triple: string): Target {
 
 async function run(command: string, args: string[]): Promise<void> {
   console.log(`build-desktop-sidecar: ${command} ${args.join(' ')}`)
-  await execFileAsync(command, args, { cwd: root, maxBuffer: 16 * 1024 * 1024 })
+  await execFileAsync(command, args, {
+    cwd: root,
+    maxBuffer: 16 * 1024 * 1024,
+    shell: process.platform === 'win32',
+  })
 }
 
 async function hostTriple(): Promise<string> {

@@ -59,6 +59,9 @@ jobs:
       - name: Build desktop sidecar
         run: pnpm exec tsx scripts/build-desktop-sidecar.ts --skip-build --target ${{ matrix.target }}
 
+      - name: Restore workspace dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
       - name: Build Tauri installers
         working-directory: apps/desktop
         run: pnpm tauri build --debug
