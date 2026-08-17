@@ -16,7 +16,14 @@
   "bundle": {
     "active": true,
     "externalBin": ["binaries/dsh-desktop-runtime"],
-    "icon": [],
+    "icon": [
+      "icons/32x32.png",
+      "icons/64x64.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
     "targets": ["dmg", "nsis", "msi"],
     "category": "DeveloperTool",
     "shortDescription": "DeepSeek Harness desktop application",
