@@ -85,7 +85,7 @@ pub fn run() {
             read_plugin_log
         ])
         .on_window_event(|window, event| {
-            if matches!(event, WindowEvent::CloseRequested { .. }) {
+            if window.label() == "main" && matches!(event, WindowEvent::CloseRequested { .. }) {
                 let state = window.app_handle().state::<AppState>();
                 let _ = state.harness.stop();
             }

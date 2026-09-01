@@ -216,7 +216,7 @@ fn perform_operation(
         writeln!(log, "重新启动 Harness...").ok();
         harness.start(app).map_err(|error| format!("插件已写入，但 Harness 重启失败：{error}"))?;
     }
-    Ok(false)
+    Ok(was_running)
 }
 
 fn run_dsh_plugin_command(

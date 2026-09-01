@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ArrowUpRight,
   Boxes,
@@ -31,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { fallbackPluginCatalog } from "@/data/plugin-catalog";
+import { closeHarnessWindow, openHarnessWindow } from "@/lib/harness-window";
 import { tauri } from "@/lib/tauri";
 import type { HarnessStatus, InstalledPlugin, PluginCatalogItem, PluginOperation } from "@/types";
 
@@ -66,6 +66,7 @@ export default function App() {
   const [operationLogs, setOperationLogs] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
+  const [isOpeningHarness, setIsOpeningHarness] = useState(false);
 
   const loadData = useCallback(async () => {
     const [catalogResult, installedResult, statusResult] = await Promise.allSettled([
@@ -89,6 +90,13 @@ export default function App() {
     void loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void tauri.getHarnessStatus().then(setHarnessStatus).catch(() => undefined);
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   const categories = useMemo(
     () => ["全部", ...new Set(catalog.map((plugin) => plugin.category))],
     [catalog],
@@ -109,10 +117,15 @@ export default function App() {
   const startHarness = async () => {
     setIsStarting(true);
     setNotice(null);
+    setHarnessStatus({ state: "starting", logPath: "" });
     try {
       const launchInfo = await tauri.startHarness();
       setHarnessStatus({ state: "ready", url: launchInfo.url, port: launchInfo.port });
-      await openUrl(launchInfo.url).catch(() => window.open(launchInfo.url, "_blank", "noopener,noreferrer"));
+      try {
+        await openHarnessWindow(launchInfo.url);
+      } catch (error) {
+        setNotice(`Harness 已启动，但 Web UI 打开失败：${errorMessage(error)}`);
+      }
     } catch (error) {
       setNotice(`Harness 启动失败：${errorMessage(error)}`);
       setHarnessStatus({ state: "failed", message: errorMessage(error), logPath: "" });
@@ -121,10 +134,28 @@ export default function App() {
     }
   };
 
+  const openHarness = async () => {
+    setIsOpeningHarness(true);
+    setNotice(null);
+    try {
+      const status = await tauri.getHarnessStatus();
+      if (status.state !== "ready") {
+        await startHarness();
+        return;
+      }
+      await openHarnessWindow(status.url);
+    } catch (error) {
+      setNotice(`Harness Web UI 打开失败：${errorMessage(error)}`);
+    } finally {
+      setIsOpeningHarness(false);
+    }
+  };
+
   const stopHarness = async () => {
     setNotice(null);
     try {
       await tauri.stopHarness();
+      await closeHarnessWindow();
       setHarnessStatus({ state: "stopped" });
     } catch (error) {
       setNotice(`Harness 停止失败：${errorMessage(error)}`);
@@ -169,6 +200,14 @@ export default function App() {
       if (result.state === "success") {
         setNotice(`${plugin.name} ${actionLabel}完成，Harness 将重新加载插件。`);
         await loadData();
+        if (ready) {
+          const status = await tauri.getHarnessStatus();
+          if (status.state === "ready") {
+            await openHarnessWindow(status.url).catch((error) => {
+              setNotice(`插件已更新，但 Harness Web UI 恢复失败：${errorMessage(error)}`);
+            });
+          }
+        }
       } else if (result.state === "failed") {
         setNotice(`${plugin.name} ${actionLabel}失败：${result.message}`);
       }
@@ -179,6 +218,8 @@ export default function App() {
 
   const installedCount = installed.length;
   const ready = harnessStatus.state === "ready";
+  const starting = isStarting || harnessStatus.state === "starting";
+  const statusLabel = ready ? "服务在线" : starting ? "启动中" : harnessStatus.state === "failed" ? "启动失败" : "服务离线";
 
   return (
     <div className="flex min-h-screen bg-transparent text-foreground">
@@ -224,13 +265,19 @@ export default function App() {
             <span className="text-foreground">{view === "overview" ? "概览" : "插件市场"}</span>
           </div>
           <div className="flex items-center gap-3">
-            <Badge variant={ready ? "success" : "secondary"}>
-              <span className={`mr-1.5 size-1.5 rounded-full ${ready ? "bg-emerald-300" : "bg-zinc-500"}`} />
-              {ready ? "服务在线" : "服务离线"}
+            <Badge variant={ready ? "success" : harnessStatus.state === "failed" ? "warning" : "secondary"}>
+              <span className={`mr-1.5 size-1.5 rounded-full ${ready ? "bg-emerald-300" : starting ? "bg-amber-300" : "bg-zinc-500"}`} />
+              {statusLabel}
             </Badge>
-            <Button size="sm" variant={ready ? "outline" : "default"} onClick={ready ? stopHarness : startHarness} disabled={isStarting}>
-              {isStarting ? <LoaderCircle className="animate-spin" /> : ready ? <TerminalSquare /> : <Play />}
-              {isStarting ? "启动中" : ready ? "停止服务" : "启动 Harness"}
+            {ready && (
+              <Button size="sm" variant="ghost" onClick={openHarness} disabled={isOpeningHarness}>
+                {isOpeningHarness ? <LoaderCircle className="animate-spin" /> : <ExternalLink data-icon="inline-start" />}
+                {isOpeningHarness ? "打开中" : "打开 Web UI"}
+              </Button>
+            )}
+            <Button size="sm" variant={ready ? "outline" : "default"} onClick={ready ? stopHarness : startHarness} disabled={starting}>
+              {starting ? <LoaderCircle className="animate-spin" /> : ready ? <TerminalSquare /> : <Play />}
+              {starting ? "启动中" : ready ? "停止服务" : "启动 Harness"}
             </Button>
           </div>
         </header>
@@ -251,7 +298,9 @@ export default function App() {
               harnessStatus={harnessStatus}
               onOpenPlugins={() => setView("plugins")}
               onStart={startHarness}
+              onOpenHarness={openHarness}
               starting={isStarting}
+              opening={isOpeningHarness}
             />
           ) : (
             <PluginMarket
@@ -287,7 +336,7 @@ function NavItem({ active, icon, label, count, onClick }: { active: boolean; ico
   );
 }
 
-function Overview({ catalog, installedCount, harnessStatus, onOpenPlugins, onStart, starting }: { catalog: PluginCatalogItem[]; installedCount: number; harnessStatus: HarnessStatus; onOpenPlugins: () => void; onStart: () => void; starting: boolean }) {
+function Overview({ catalog, installedCount, harnessStatus, onOpenPlugins, onStart, onOpenHarness, starting, opening }: { catalog: PluginCatalogItem[]; installedCount: number; harnessStatus: HarnessStatus; onOpenPlugins: () => void; onStart: () => void; onOpenHarness: () => void; starting: boolean; opening: boolean }) {
   const ready = harnessStatus.state === "ready";
   return (
     <>
@@ -297,13 +346,13 @@ function Overview({ catalog, installedCount, harnessStatus, onOpenPlugins, onSta
           <Badge variant="default"><Sparkles className="mr-1.5 size-3" />桌面运行时已就绪</Badge>
           <h1 className="mt-5 text-4xl font-semibold tracking-[-0.04em] text-zinc-50">把 Harness 变成<br /><span className="text-primary">可扩展的工作台。</span></h1>
           <p className="mt-4 max-w-xl text-[15px] leading-7 text-muted-foreground">通过内置 Node 24 和精选插件市场，一键管理 DeepSeek Harness。服务始终绑定在本机，模型密钥继续由 Harness 自己管理。</p>
-          <div className="mt-7 flex gap-3">
-            <Button size="lg" onClick={ready ? onOpenPlugins : onStart} disabled={starting}>
-              {starting ? <LoaderCircle className="animate-spin" /> : ready ? <Boxes /> : <Play />}
-              {starting ? "启动中" : ready ? "浏览插件市场" : "启动 Harness"}
-              {!starting && <ArrowUpRight />}
+          <div className="mt-7 flex flex-wrap gap-3">
+            <Button size="lg" onClick={ready ? onOpenHarness : onStart} disabled={starting || opening}>
+              {starting || opening ? <LoaderCircle className="animate-spin" /> : ready ? <TerminalSquare /> : <Play />}
+              {starting ? "启动中" : opening ? "打开中" : ready ? "打开 Harness" : "启动 Harness"}
+              {!starting && !opening && <ArrowUpRight />}
             </Button>
-            <Button size="lg" variant="outline" onClick={onOpenPlugins}><Package />查看精选插件</Button>
+            <Button size="lg" variant="outline" onClick={onOpenPlugins}><Boxes />查看精选插件</Button>
           </div>
         </div>
       </section>
@@ -318,7 +367,7 @@ function Overview({ catalog, installedCount, harnessStatus, onOpenPlugins, onSta
         <Card className="bg-card/60">
           <CardHeader className="flex-row items-start justify-between space-y-0">
             <div><CardTitle>运行状态</CardTitle><CardDescription className="mt-1.5">桌面端负责启动和回收官方 Harness Web 服务。</CardDescription></div>
-            <Badge variant={ready ? "success" : "secondary"}>{ready ? "在线" : "待启动"}</Badge>
+              <Badge variant={ready ? "success" : "secondary"}>{ready ? "在线" : harnessStatus.state === "starting" ? "启动中" : "待启动"}</Badge>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-3">
