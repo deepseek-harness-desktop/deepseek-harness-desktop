@@ -6,6 +6,7 @@ import {
   ChevronRight,
   CircleAlert,
   CircleDot,
+  Copy,
   Cpu,
   ExternalLink,
   Github,
@@ -32,9 +33,11 @@ import { Input } from "@/components/ui/input";
 import { fallbackPluginCatalog } from "@/data/plugin-catalog";
 import { closeHarnessWindow, openHarnessWindow } from "@/lib/harness-window";
 import { tauri } from "@/lib/tauri";
+import { cn } from "@/lib/utils";
 import type { HarnessStatus, InstalledPlugin, PluginCatalogItem, PluginOperation } from "@/types";
 
 type View = "overview" | "plugins";
+type PluginAction = "install" | "remove" | "update";
 
 const sleep = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 
@@ -63,7 +66,9 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("全部");
   const [operations, setOperations] = useState<Record<string, PluginOperation>>({});
+  const [operationActions, setOperationActions] = useState<Record<string, PluginAction>>({});
   const [operationLogs, setOperationLogs] = useState<Record<string, string>>({});
+  const [copiedOperationId, setCopiedOperationId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const [isOpeningHarness, setIsOpeningHarness] = useState(false);
@@ -183,13 +188,30 @@ export default function App() {
     return current;
   };
 
-  const runPluginOperation = async (plugin: PluginCatalogItem, action: "install" | "remove" | "update") => {
+  const copyOperationLog = async (operationId: string) => {
+    try {
+      const log = await tauri.readPluginLog(operationId);
+      if (!navigator.clipboard) {
+        throw new Error("当前环境不支持剪贴板");
+      }
+      await navigator.clipboard.writeText(log);
+      setCopiedOperationId(operationId);
+      window.setTimeout(() => {
+        setCopiedOperationId((current) => (current === operationId ? null : current));
+      }, 1800);
+    } catch (error) {
+      setNotice(`日志复制失败：${errorMessage(error)}`);
+    }
+  };
+
+  const runPluginOperation = async (plugin: PluginCatalogItem, action: PluginAction) => {
     const actionLabel = action === "install" ? "安装" : action === "remove" ? "卸载" : "更新";
     if (!window.confirm(`${actionLabel} ${plugin.name}？\n\n来源：${plugin.sourceUrl}\n权限：${plugin.capabilities.join("、")}`)) {
       return;
     }
 
     setNotice(null);
+    setOperationActions((previous) => ({ ...previous, [plugin.id]: action }));
     try {
       const operation = action === "install"
         ? await tauri.installPlugin(plugin.id)
@@ -309,12 +331,15 @@ export default function App() {
               category={category}
               installed={installed}
               operations={operations}
+              operationActions={operationActions}
               operationLogs={operationLogs}
+              copiedOperationId={copiedOperationId}
               platform={platformLabel()}
               query={query}
               onCategoryChange={setCategory}
               onQueryChange={setQuery}
               onOperation={runPluginOperation}
+              onCopyLog={copyOperationLog}
             />
           )}
         </div>
@@ -399,7 +424,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   return <div className="rounded-lg border bg-black/10 px-3 py-2.5"><div className="text-[11px] text-zinc-500">{label}</div><div className="mt-1 truncate text-sm text-zinc-200">{value}</div></div>;
 }
 
-function PluginMarket({ catalog, categories, category, installed, operations, operationLogs, platform, query, onCategoryChange, onQueryChange, onOperation }: { catalog: PluginCatalogItem[]; categories: string[]; category: string; installed: InstalledPlugin[]; operations: Record<string, PluginOperation>; operationLogs: Record<string, string>; platform: string; query: string; onCategoryChange: (category: string) => void; onQueryChange: (query: string) => void; onOperation: (plugin: PluginCatalogItem, action: "install" | "remove" | "update") => Promise<void> }) {
+function PluginMarket({ catalog, categories, category, installed, operations, operationActions, operationLogs, copiedOperationId, platform, query, onCategoryChange, onQueryChange, onOperation, onCopyLog }: { catalog: PluginCatalogItem[]; categories: string[]; category: string; installed: InstalledPlugin[]; operations: Record<string, PluginOperation>; operationActions: Record<string, PluginAction>; operationLogs: Record<string, string>; copiedOperationId: string | null; platform: string; query: string; onCategoryChange: (category: string) => void; onQueryChange: (query: string) => void; onOperation: (plugin: PluginCatalogItem, action: PluginAction) => Promise<void>; onCopyLog: (operationId: string) => Promise<void> }) {
   return (
     <>
       <div className="flex flex-wrap items-end justify-between gap-5">
@@ -410,14 +435,15 @@ function PluginMarket({ catalog, categories, category, installed, operations, op
         <div className="relative min-w-[260px] flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-500" /><Input className="pl-9" value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="搜索插件、能力或作者..." /></div>
         <div className="flex gap-1 overflow-x-auto rounded-lg border bg-card/50 p-1">{categories.map((item) => <button key={item} className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs transition-colors ${category === item ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground"}`} onClick={() => onCategoryChange(item)}>{item}</button>)}</div>
       </div>
-      {catalog.length === 0 ? <Card className="bg-card/50"><CardContent className="flex flex-col items-center justify-center p-16 text-center"><Search className="size-8 text-zinc-600" /><p className="mt-4 text-sm text-zinc-300">没有匹配的插件</p><p className="mt-1 text-xs text-zinc-500">换个关键词或分类试试。</p></CardContent></Card> : <div className="grid gap-4 xl:grid-cols-2">{catalog.map((plugin) => <PluginCard key={plugin.id} plugin={plugin} installed={isInstalled(plugin, installed)} operation={operations[plugin.id]} operationLog={operations[plugin.id] ? operationLogs[operations[plugin.id].operationId] : undefined} onOperation={onOperation} />)}</div>}
+      {catalog.length === 0 ? <Card className="bg-card/50"><CardContent className="flex flex-col items-center justify-center p-16 text-center"><Search className="size-8 text-zinc-600" /><p className="mt-4 text-sm text-zinc-300">没有匹配的插件</p><p className="mt-1 text-xs text-zinc-500">换个关键词或分类试试。</p></CardContent></Card> : <div className="grid gap-4 xl:grid-cols-2">{catalog.map((plugin) => <PluginCard key={plugin.id} plugin={plugin} installed={isInstalled(plugin, installed)} operation={operations[plugin.id]} operationAction={operationActions[plugin.id]} operationLog={operations[plugin.id] ? operationLogs[operations[plugin.id].operationId] : undefined} copiedOperationId={copiedOperationId} onOperation={onOperation} onCopyLog={onCopyLog} />)}</div>}
       <div className="flex items-center gap-2 text-xs text-zinc-500"><ShieldCheck className="size-3.5 text-primary" />清单固定到版本并随应用发布；来源和权限会在每次安装前再次确认。</div>
     </>
   );
 }
 
-function PluginCard({ plugin, installed, operation, operationLog, onOperation }: { plugin: PluginCatalogItem; installed: boolean; operation?: PluginOperation; operationLog?: string; onOperation: (plugin: PluginCatalogItem, action: "install" | "remove" | "update") => Promise<void> }) {
+function PluginCard({ plugin, installed, operation, operationAction, operationLog, copiedOperationId, onOperation, onCopyLog }: { plugin: PluginCatalogItem; installed: boolean; operation?: PluginOperation; operationAction?: PluginAction; operationLog?: string; copiedOperationId: string | null; onOperation: (plugin: PluginCatalogItem, action: PluginAction) => Promise<void>; onCopyLog: (operationId: string) => Promise<void> }) {
   const running = operationIsRunning(operation);
   const failed = operation?.state === "failed";
-  return <Card className="group flex flex-col bg-card/60 transition-colors hover:border-zinc-600"><CardHeader className="pb-4"><div className="flex items-start gap-4"><div className="flex size-11 shrink-0 items-center justify-center rounded-xl border bg-zinc-900 text-primary"><PlugZap className="size-5" /></div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><CardTitle className="truncate">{plugin.name}</CardTitle>{installed && <Badge variant="success"><Check className="mr-1 size-3" />已安装</Badge>}</div><CardDescription className="mt-1.5 line-clamp-2 min-h-10">{plugin.description}</CardDescription></div></div></CardHeader><CardContent className="flex flex-1 flex-col gap-4"><div className="flex flex-wrap gap-1.5">{plugin.capabilities.map((capability) => <Badge key={capability} variant="secondary">{capability}</Badge>)}</div><div className="grid grid-cols-2 gap-3 rounded-lg border bg-black/10 p-3 text-xs"><div><div className="text-zinc-500">作者</div><div className="mt-1 truncate text-zinc-300">{plugin.author}</div></div><div><div className="text-zinc-500">版本</div><div className="mt-1 text-zinc-300">v{plugin.version}</div></div><div><div className="text-zinc-500">兼容 Harness</div><div className="mt-1 text-zinc-300">{plugin.dshVersionRange}</div></div><div><div className="text-zinc-500">许可证</div><div className="mt-1 text-zinc-300">{plugin.license}</div></div></div>{operationLog && <pre className="max-h-24 overflow-auto rounded-md bg-black/40 px-2.5 py-2 font-mono text-[10px] leading-4 text-zinc-500">{operationLog}</pre>}<div className="mt-auto flex items-center justify-between gap-3"><a className="flex min-w-0 items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300" href={plugin.sourceUrl} target="_blank" rel="noreferrer"><Github className="size-3.5 shrink-0" /><span className="truncate">查看来源仓库</span><ExternalLink className="size-3 shrink-0" /></a><div className="flex gap-2">{installed && <Button size="sm" variant="ghost" title="卸载" disabled={running} onClick={() => void onOperation(plugin, "remove")}><Trash2 className="text-zinc-400" /></Button>}{installed && <Button size="sm" variant="outline" disabled={running} onClick={() => void onOperation(plugin, "update")}>{running ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}更新</Button>}{!installed && <Button size="sm" disabled={running} onClick={() => void onOperation(plugin, "install")}>{running ? <LoaderCircle className="animate-spin" /> : <Package />}安装</Button>}</div></div>{failed && <div className="flex items-start gap-2 rounded-md bg-red-400/5 px-2.5 py-2 text-xs text-red-300"><CircleAlert className="mt-0.5 size-3.5 shrink-0" /><span className="line-clamp-2">{operation.message}</span></div>}</CardContent></Card>;
+  const [showLog, setShowLog] = useState(false);
+  return <Card className="group flex flex-col bg-card/60 transition-colors hover:border-zinc-600"><CardHeader className="pb-4"><div className="flex items-start gap-4"><div className="flex size-11 shrink-0 items-center justify-center rounded-xl border bg-zinc-900 text-primary"><PlugZap className="size-5" /></div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><CardTitle className="truncate">{plugin.name}</CardTitle>{installed && <Badge variant="success"><Check className="mr-1 size-3" />已安装</Badge>}</div><CardDescription className="mt-1.5 line-clamp-2 min-h-10">{plugin.description}</CardDescription></div></div></CardHeader><CardContent className="flex flex-1 flex-col gap-4"><div className="flex flex-wrap gap-1.5">{plugin.capabilities.map((capability) => <Badge key={capability} variant="secondary">{capability}</Badge>)}</div><div className="grid grid-cols-2 gap-3 rounded-lg border bg-black/10 p-3 text-xs"><div><div className="text-zinc-500">作者</div><div className="mt-1 truncate text-zinc-300">{plugin.author}</div></div><div><div className="text-zinc-500">版本</div><div className="mt-1 text-zinc-300">v{plugin.version}</div></div><div><div className="text-zinc-500">兼容 Harness</div><div className="mt-1 text-zinc-300">{plugin.dshVersionRange}</div></div><div><div className="text-zinc-500">许可证</div><div className="mt-1 text-zinc-300">{plugin.license}</div></div></div>{operationLog && <div className="flex flex-col gap-2"><div className="flex items-center justify-between gap-2"><span className="text-xs text-zinc-500">操作日志</span><div className="flex gap-1"><Button size="sm" variant="ghost" onClick={() => setShowLog((current) => !current)}><TerminalSquare data-icon="inline-start" />{showLog ? "收起日志" : "查看日志"}</Button>{operation && <Button size="sm" variant="ghost" onClick={() => void onCopyLog(operation.operationId)}><Copy data-icon="inline-start" />{copiedOperationId === operation.operationId ? "已复制" : "复制日志"}</Button>}</div></div><pre className={cn("overflow-auto rounded-md bg-black/40 px-2.5 py-2 font-mono text-[10px] leading-4 text-zinc-500", showLog ? "max-h-64" : "max-h-12")}>{showLog ? operationLog : `${operationLog.split("\n").slice(-3).join("\n")}\n`}</pre></div>}<div className="mt-auto flex items-center justify-between gap-3"><a className="flex min-w-0 items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300" href={plugin.sourceUrl} target="_blank" rel="noreferrer"><Github className="size-3.5 shrink-0" /><span className="truncate">查看来源仓库</span><ExternalLink className="size-3 shrink-0" /></a><div className="flex gap-2">{installed && <Button size="sm" variant="ghost" title="卸载" disabled={running} onClick={() => void onOperation(plugin, "remove")}><Trash2 className="text-zinc-400" /></Button>}{installed && <Button size="sm" variant="outline" disabled={running} onClick={() => void onOperation(plugin, "update")}>{running ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}更新</Button>}{!installed && <Button size="sm" disabled={running} onClick={() => void onOperation(plugin, "install")}>{running ? <LoaderCircle className="animate-spin" /> : <Package />}安装</Button>}</div></div>{failed && <div className="flex items-start gap-2 rounded-md bg-destructive/5 px-2.5 py-2 text-xs text-destructive"><CircleAlert className="mt-0.5 size-3.5 shrink-0" /><div className="flex min-w-0 flex-1 items-start justify-between gap-3"><span className="line-clamp-2">{operation.message}</span>{operationAction && <Button size="sm" variant="outline" onClick={() => void onOperation(plugin, operationAction)}><RefreshCw data-icon="inline-start" />重试</Button>}</div></div>}</CardContent></Card>;
 }
