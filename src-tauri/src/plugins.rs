@@ -4,7 +4,10 @@ use std::{
     io::{BufRead, BufReader, Write},
     path::PathBuf,
     process::{Command, Stdio},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     thread,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -12,7 +15,10 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
-use crate::harness::{runtime_dsh_entry, runtime_environment, runtime_node, HarnessController};
+use crate::harness::{
+    configure_process_group, runtime_dsh_entry, runtime_environment, runtime_node,
+    terminate_process_by_pid, HarnessController,
+};
 
 const CATALOG_JSON: &str = include_str!("../resources/plugin-catalog.json");
 
@@ -48,11 +54,21 @@ pub struct InstalledPlugin {
 #[serde(rename_all = "camelCase", tag = "state")]
 pub enum PluginOperation {
     #[serde(rename = "running")]
-    Running { operation_id: String, log_path: String },
+    Running {
+        operation_id: String,
+        log_path: String,
+    },
     #[serde(rename = "success")]
-    Success { operation_id: String, requires_restart: bool },
+    Success {
+        operation_id: String,
+        requires_restart: bool,
+    },
     #[serde(rename = "failed")]
-    Failed { operation_id: String, message: String, log_path: String },
+    Failed {
+        operation_id: String,
+        message: String,
+        log_path: String,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -67,6 +83,8 @@ pub struct PluginManager {
     catalog: Arc<Vec<PluginCatalogItem>>,
     operations: Arc<Mutex<HashMap<String, PluginOperation>>>,
     log_paths: Arc<Mutex<HashMap<String, PathBuf>>>,
+    active_pid: Arc<Mutex<Option<u32>>>,
+    cancel_requested: Arc<AtomicBool>,
 }
 
 impl Default for PluginManager {
@@ -76,6 +94,8 @@ impl Default for PluginManager {
             catalog: Arc::new(catalog),
             operations: Arc::new(Mutex::new(HashMap::new())),
             log_paths: Arc::new(Mutex::new(HashMap::new())),
+            active_pid: Arc::new(Mutex::new(None)),
+            cancel_requested: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -93,8 +113,12 @@ impl PluginManager {
                 .join("node_modules")
                 .join(&plugin.package_name)
                 .join("package.json");
-            let Ok(content) = fs::read_to_string(package_json) else { continue };
-            let Ok(package) = serde_json::from_str::<serde_json::Value>(&content) else { continue };
+            let Ok(content) = fs::read_to_string(package_json) else {
+                continue;
+            };
+            let Ok(package) = serde_json::from_str::<serde_json::Value>(&content) else {
+                continue;
+            };
             let version = package
                 .get("version")
                 .and_then(serde_json::Value::as_str)
@@ -129,10 +153,20 @@ impl PluginManager {
             operation_id: operation_id.clone(),
             log_path: log_path.display().to_string(),
         };
-        self.operations
+        let mut operations = self
+            .operations
             .lock()
-            .map_err(|_| "插件操作状态锁不可用".to_string())?
-            .insert(operation_id.clone(), running.clone());
+            .map_err(|_| "插件操作状态锁不可用".to_string())?;
+        if let Some(active_operation_id) = operations.values().find_map(|operation| match operation
+        {
+            PluginOperation::Running { operation_id, .. } => Some(operation_id.clone()),
+            PluginOperation::Success { .. } | PluginOperation::Failed { .. } => None,
+        }) {
+            return Err(format!("已有插件操作正在进行：{active_operation_id}"));
+        }
+        self.cancel_requested.store(false, Ordering::SeqCst);
+        operations.insert(operation_id.clone(), running.clone());
+        drop(operations);
         self.log_paths
             .lock()
             .map_err(|_| "插件日志状态锁不可用".to_string())?
@@ -140,8 +174,18 @@ impl PluginManager {
 
         let manager = self.clone();
         let app = app.clone();
+        let active_pid = self.active_pid.clone();
+        let cancel_requested = self.cancel_requested.clone();
         thread::spawn(move || {
-            let result = perform_operation(&app, &harness, &plugin, action, &log_path);
+            let result = perform_operation(
+                &app,
+                &harness,
+                &plugin,
+                action,
+                &log_path,
+                active_pid,
+                cancel_requested,
+            );
             let operation = match result {
                 Ok(requires_restart) => PluginOperation::Success {
                     operation_id: operation_id.clone(),
@@ -159,6 +203,19 @@ impl PluginManager {
         });
 
         Ok(running)
+    }
+
+    pub fn stop(&self) -> Result<(), String> {
+        self.cancel_requested.store(true, Ordering::SeqCst);
+        let pid = self
+            .active_pid
+            .lock()
+            .map_err(|_| "插件进程状态锁不可用".to_string())?
+            .take();
+        if let Some(pid) = pid {
+            terminate_process_by_pid(pid)?;
+        }
+        Ok(())
     }
 
     pub fn operation(&self, id: &str) -> Result<PluginOperation, String> {
@@ -188,6 +245,8 @@ fn perform_operation(
     plugin: &PluginCatalogItem,
     action: PluginAction,
     log_path: &PathBuf,
+    active_pid: Arc<Mutex<Option<u32>>>,
+    cancel_requested: Arc<AtomicBool>,
 ) -> Result<bool, String> {
     let mut log = OpenOptions::new()
         .create(true)
@@ -198,23 +257,49 @@ fn perform_operation(
     writeln!(log, "来源：{}", plugin.source_url).ok();
     writeln!(log, "操作：{}", action_label(action)).ok();
 
+    if cancel_requested.load(Ordering::SeqCst) {
+        return Err("插件操作已取消".to_string());
+    }
+
     let was_running = harness.is_running();
     if was_running {
         writeln!(log, "停止 Harness 以更新 web profile...").ok();
         harness.stop()?;
     }
 
-    let result = run_dsh_plugin_command(app, plugin, action, log_path);
-    if result.is_err() {
-        if was_running {
-            let _ = harness.start(app);
+    let result = run_dsh_plugin_command(
+        app,
+        plugin,
+        action,
+        log_path,
+        active_pid,
+        cancel_requested.clone(),
+    )
+    .and_then(|_| {
+        writeln!(log, "校验 web profile 中的插件状态...").ok();
+        verify_plugin_state(app, plugin, action)
+    });
+    if let Err(message) = result {
+        if was_running && !cancel_requested.load(Ordering::SeqCst) {
+            if let Err(restart_error) = harness.start(app) {
+                return Err(format!("{message}；Harness 恢复失败：{restart_error}"));
+            }
         }
-        return result.map(|_| false);
+        return Err(if cancel_requested.load(Ordering::SeqCst) {
+            "插件操作已取消".to_string()
+        } else {
+            message
+        });
     }
 
     if was_running {
+        if cancel_requested.load(Ordering::SeqCst) {
+            return Err("插件操作已取消".to_string());
+        }
         writeln!(log, "重新启动 Harness...").ok();
-        harness.start(app).map_err(|error| format!("插件已写入，但 Harness 重启失败：{error}"))?;
+        harness
+            .start(app)
+            .map_err(|error| format!("插件已写入，但 Harness 重启失败：{error}"))?;
     }
     Ok(was_running)
 }
@@ -224,6 +309,8 @@ fn run_dsh_plugin_command(
     plugin: &PluginCatalogItem,
     action: PluginAction,
     log_path: &PathBuf,
+    active_pid: Arc<Mutex<Option<u32>>>,
+    cancel_requested: Arc<AtomicBool>,
 ) -> Result<(), String> {
     let data_dir = app
         .path()
@@ -253,15 +340,33 @@ fn run_dsh_plugin_command(
         .envs(runtime_environment(&node, app))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    writeln!(
-        OpenOptions::new().append(true).open(log_path).map_err(|error| format!("无法写入插件日志：{error}"))?,
-        "执行：node <dsh-entry> plugin --profile web {action_arg} {package_arg}"
-    )
-    .ok();
-    let mut child = command.spawn().map_err(|error| format!("无法启动插件安装命令：{error}"))?;
+    configure_process_group(&mut command);
     let log = Arc::new(Mutex::new(
-        OpenOptions::new().append(true).open(log_path).map_err(|error| format!("无法打开插件日志：{error}"))?,
+        OpenOptions::new()
+            .append(true)
+            .open(log_path)
+            .map_err(|error| format!("无法打开插件日志：{error}"))?,
     ));
+    if let Ok(mut file) = log.lock() {
+        writeln!(
+            file,
+            "执行：node <dsh-entry> plugin --profile web {action_arg} {package_arg}"
+        )
+        .ok();
+    }
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("无法启动插件安装命令：{error}"))?;
+    let pid = child.id();
+    {
+        let mut current_pid = active_pid
+            .lock()
+            .map_err(|_| "插件进程状态锁不可用".to_string())?;
+        *current_pid = Some(pid);
+    }
+    if cancel_requested.load(Ordering::SeqCst) {
+        let _ = terminate_process_by_pid(pid);
+    }
     let mut readers = Vec::new();
     if let Some(stdout) = child.stdout.take() {
         readers.push(spawn_reader(stdout, log.clone()));
@@ -269,9 +374,18 @@ fn run_dsh_plugin_command(
     if let Some(stderr) = child.stderr.take() {
         readers.push(spawn_reader(stderr, log));
     }
-    let status = child.wait().map_err(|error| format!("插件命令等待失败：{error}"))?;
+    let status_result = child.wait();
+    if let Ok(mut current_pid) = active_pid.lock() {
+        if *current_pid == Some(pid) {
+            *current_pid = None;
+        }
+    }
     for reader in readers {
         let _ = reader.join();
+    }
+    let status = status_result.map_err(|error| format!("插件命令等待失败：{error}"))?;
+    if cancel_requested.load(Ordering::SeqCst) {
+        return Err("插件操作已取消".to_string());
     }
     if !status.success() {
         return Err(format!("插件命令退出码：{status}"));
@@ -279,7 +393,45 @@ fn run_dsh_plugin_command(
     Ok(())
 }
 
-fn spawn_reader<R: std::io::Read + Send + 'static>(reader: R, log: Arc<Mutex<File>>) -> thread::JoinHandle<()> {
+fn verify_plugin_state(
+    app: &AppHandle,
+    plugin: &PluginCatalogItem,
+    action: PluginAction,
+) -> Result<(), String> {
+    let package_json = profile_dir(app)?
+        .join("node_modules")
+        .join(&plugin.package_name)
+        .join("package.json");
+    match action {
+        PluginAction::Install | PluginAction::Update => {
+            let content = fs::read_to_string(&package_json)
+                .map_err(|error| format!("插件命令完成，但找不到已安装包：{error}"))?;
+            let package = serde_json::from_str::<serde_json::Value>(&content)
+                .map_err(|error| format!("插件 package.json 无法解析：{error}"))?;
+            let version = package
+                .get("version")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("unknown");
+            if version != plugin.version {
+                return Err(format!(
+                    "插件版本校验失败：期望 v{}，实际 v{}",
+                    plugin.version, version
+                ));
+            }
+        }
+        PluginAction::Remove => {
+            if package_json.exists() {
+                return Err("插件命令完成，但 profile 中仍存在该插件".to_string());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn spawn_reader<R: std::io::Read + Send + 'static>(
+    reader: R,
+    log: Arc<Mutex<File>>,
+) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         for line in BufReader::new(reader).lines().map_while(Result::ok) {
             let line = redact_sensitive(&line);
@@ -317,19 +469,35 @@ fn action_label(action: PluginAction) -> &'static str {
 }
 
 fn timestamp() -> u128 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|duration| duration.as_millis()).unwrap_or_default()
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or_default()
 }
 
 fn redact_sensitive(input: &str) -> String {
     let mut output = input.to_string();
-    for marker in ["token=", "token:", "api_key=", "apiKey=", "DEEPSEEK_API_KEY=", "OPENAI_API_KEY="] {
+    for marker in [
+        "token=",
+        "token:",
+        "api_key=",
+        "apiKey=",
+        "DEEPSEEK_API_KEY=",
+        "OPENAI_API_KEY=",
+    ] {
         if let Some(start) = output.find(marker) {
             let value_start = start + marker.len();
             let value_end = output[value_start..]
-                .find(|character: char| character.is_whitespace() || ['&', '"', '\'', ')', ','].contains(&character))
+                .find(|character: char| {
+                    character.is_whitespace() || ['&', '"', '\'', ')', ','].contains(&character)
+                })
                 .map(|offset| value_start + offset)
                 .unwrap_or(output.len());
-            output = format!("{}[REDACTED]{}", &output[..value_start], &output[value_end..]);
+            output = format!(
+                "{}[REDACTED]{}",
+                &output[..value_start],
+                &output[value_end..]
+            );
         }
     }
     output

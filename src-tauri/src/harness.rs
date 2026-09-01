@@ -59,7 +59,10 @@ impl HarnessController {
     pub fn start(&self, app: &AppHandle) -> Result<HarnessLaunchInfo, String> {
         self.refresh_process();
         {
-            let state = self.inner.lock().map_err(|_| "Harness 状态锁不可用".to_string())?;
+            let state = self
+                .inner
+                .lock()
+                .map_err(|_| "Harness 状态锁不可用".to_string())?;
             if matches!(state.status, HarnessStatus::Ready { .. }) {
                 if let HarnessStatus::Ready { url, port } = &state.status {
                     return Ok(HarnessLaunchInfo {
@@ -80,12 +83,14 @@ impl HarnessController {
             .app_data_dir()
             .map_err(|error| format!("无法定位应用数据目录：{error}"))?;
         let log_dir = data_dir.join("logs");
-        fs::create_dir_all(&log_dir).map_err(|error| format!("无法创建 Harness 日志目录：{error}"))?;
+        fs::create_dir_all(&log_dir)
+            .map_err(|error| format!("无法创建 Harness 日志目录：{error}"))?;
         let log_path = log_dir.join(format!("harness-{}.log", timestamp()));
         let node = runtime_node(app);
         let dsh_entry = runtime_dsh_entry(app);
         let dsh_home = data_dir.join("dsh");
-        fs::create_dir_all(&dsh_home).map_err(|error| format!("无法创建 Harness 数据目录：{error}"))?;
+        fs::create_dir_all(&dsh_home)
+            .map_err(|error| format!("无法创建 Harness 数据目录：{error}"))?;
         fs::create_dir_all(&data_dir).map_err(|error| format!("无法创建应用数据目录：{error}"))?;
 
         let mut command = Command::new(&node);
@@ -116,7 +121,9 @@ impl HarnessController {
             .map_err(|error| format!("无法打开 Harness 日志：{error}"))?;
         let shared = self.inner.clone();
         {
-            let mut state = shared.lock().map_err(|_| "Harness 状态锁不可用".to_string())?;
+            let mut state = shared
+                .lock()
+                .map_err(|_| "Harness 状态锁不可用".to_string())?;
             state.child = Some(child);
             state.log_path = Some(log_path.clone());
             state.status = HarnessStatus::Starting {
@@ -135,7 +142,10 @@ impl HarnessController {
     }
 
     pub fn stop(&self) -> Result<(), String> {
-        let mut state = self.inner.lock().map_err(|_| "Harness 状态锁不可用".to_string())?;
+        let mut state = self
+            .inner
+            .lock()
+            .map_err(|_| "Harness 状态锁不可用".to_string())?;
         if let Some(mut child) = state.child.take() {
             terminate_process_tree(&mut child)?;
         }
@@ -162,7 +172,11 @@ impl HarnessController {
             .unwrap_or(false)
     }
 
-    fn wait_until_ready(&self, app: &AppHandle, timeout: Duration) -> Result<HarnessLaunchInfo, String> {
+    fn wait_until_ready(
+        &self,
+        app: &AppHandle,
+        timeout: Duration,
+    ) -> Result<HarnessLaunchInfo, String> {
         let deadline = std::time::Instant::now() + timeout;
         loop {
             self.refresh_process();
@@ -198,8 +212,12 @@ impl HarnessController {
     }
 
     fn refresh_process(&self) {
-        let Ok(mut state) = self.inner.lock() else { return };
-        let Some(child) = state.child.as_mut() else { return };
+        let Ok(mut state) = self.inner.lock() else {
+            return;
+        };
+        let Some(child) = state.child.as_mut() else {
+            return;
+        };
         match child.try_wait() {
             Ok(Some(exit)) => {
                 let log_path = state
@@ -218,7 +236,11 @@ impl HarnessController {
     }
 }
 
-fn spawn_log_reader<R: std::io::Read + Send + 'static>(reader: R, shared: Arc<Mutex<HarnessInner>>, log_path: PathBuf) {
+fn spawn_log_reader<R: std::io::Read + Send + 'static>(
+    reader: R,
+    shared: Arc<Mutex<HarnessInner>>,
+    log_path: PathBuf,
+) {
     thread::spawn(move || {
         let mut file = match OpenOptions::new().create(true).append(true).open(log_path) {
             Ok(file) => file,
@@ -247,7 +269,13 @@ fn parse_harness_url(line: &str) -> Option<(String, u16)> {
 }
 
 fn wait_for_http(url: &str, timeout: Duration) -> bool {
-    let Some(port) = url.rsplit(':').next().and_then(|part| part.parse::<u16>().ok()) else { return false };
+    let Some(port) = url
+        .rsplit(':')
+        .next()
+        .and_then(|part| part.parse::<u16>().ok())
+    else {
+        return false;
+    };
     let deadline = std::time::Instant::now() + timeout;
     while std::time::Instant::now() < deadline {
         if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
@@ -276,7 +304,10 @@ pub fn runtime_dsh_entry(app: &AppHandle) -> PathBuf {
         .ok()
         .map(|dir| dir.join("runtime/server/node_modules/@deepseek-ai/dsh/lib/bin.js"))
         .filter(|path| path.is_file())
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../node_modules/@deepseek-ai/dsh/lib/bin.js"))
+        .unwrap_or_else(|| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../node_modules/@deepseek-ai/dsh/lib/bin.js")
+        })
 }
 
 pub fn runtime_environment(node: &Path, app: &AppHandle) -> Vec<(String, String)> {
@@ -306,21 +337,39 @@ fn dsh_version(app: &AppHandle) -> String {
         .ok()
         .map(|dir| dir.join("runtime/server/node_modules/@deepseek-ai/dsh/package.json"))
         .filter(|path| path.is_file())
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../node_modules/@deepseek-ai/dsh/package.json"));
+        .unwrap_or_else(|| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../node_modules/@deepseek-ai/dsh/package.json")
+        });
     fs::read_to_string(package)
         .ok()
         .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
-        .and_then(|package| package.get("version").and_then(serde_json::Value::as_str).map(str::to_string))
+        .and_then(|package| {
+            package
+                .get("version")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        })
         .unwrap_or_else(|| "unknown".to_string())
 }
 
 fn timestamp() -> u128 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|duration| duration.as_millis()).unwrap_or_default()
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or_default()
 }
 
 fn redact_sensitive(input: &str) -> String {
     let mut output = input.to_string();
-    for marker in ["token=", "token:", "api_key=", "apiKey=", "DEEPSEEK_API_KEY=", "OPENAI_API_KEY="] {
+    for marker in [
+        "token=",
+        "token:",
+        "api_key=",
+        "apiKey=",
+        "DEEPSEEK_API_KEY=",
+        "OPENAI_API_KEY=",
+    ] {
         output = redact_after_marker(&output, marker);
     }
     let mut result = String::with_capacity(output.len());
@@ -340,53 +389,78 @@ fn redact_sensitive(input: &str) -> String {
 }
 
 fn redact_after_marker(input: &str, marker: &str) -> String {
-    let Some(start) = input.find(marker) else { return input.to_string() };
+    let Some(start) = input.find(marker) else {
+        return input.to_string();
+    };
     let value_start = start + marker.len();
     let value_end = input[value_start..]
-        .find(|character: char| character.is_whitespace() || ['&', '"', '\'', ')', ','].contains(&character))
+        .find(|character: char| {
+            character.is_whitespace() || ['&', '"', '\'', ')', ','].contains(&character)
+        })
         .map(|offset| value_start + offset)
         .unwrap_or(input.len());
     format!("{}[REDACTED]{}", &input[..value_start], &input[value_end..])
 }
 
 fn node_binary_name() -> &'static str {
-    if cfg!(windows) { "node.exe" } else { "node" }
+    if cfg!(windows) {
+        "node.exe"
+    } else {
+        "node"
+    }
 }
 
-fn configure_process_group(command: &mut Command) {
+pub fn configure_process_group(command: &mut Command) {
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
-        unsafe { command.pre_exec(|| {
-            // Keep the Harness process in its own group so closing the desktop can
-            // terminate Node and any plugin child processes together.
-            libc::setpgid(0, 0);
-            Ok(())
-        }); }
+        unsafe {
+            command.pre_exec(|| {
+                // Keep the Harness process in its own group so closing the desktop can
+                // terminate Node and any plugin child processes together.
+                libc::setpgid(0, 0);
+                Ok(())
+            });
+        }
     }
 }
 
 fn terminate_process_tree(child: &mut Child) -> Result<(), String> {
+    terminate_process_by_pid(child.id())?;
+    let _ = child.wait();
+    Ok(())
+}
+
+pub fn terminate_process_by_pid(pid: u32) -> Result<(), String> {
     #[cfg(unix)]
     {
-        let pid = child.id() as i32;
+        let pid = pid as i32;
         let result = unsafe { libc::kill(-pid, libc::SIGTERM) };
         if result != 0 {
-            let _ = child.kill();
+            let error = std::io::Error::last_os_error();
+            if error.raw_os_error() != Some(libc::ESRCH) {
+                let direct_result = unsafe { libc::kill(pid, libc::SIGTERM) };
+                if direct_result != 0
+                    && std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+                {
+                    return Err(format!(
+                        "无法终止进程树：{}",
+                        std::io::Error::last_os_error()
+                    ));
+                }
+            }
         }
-        let _ = child.wait();
         return Ok(());
     }
     #[cfg(windows)]
     {
         let status = Command::new("taskkill")
-            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
             .status()
             .map_err(|error| format!("无法终止 Harness 进程树：{error}"))?;
         if !status.success() {
-            let _ = child.kill();
+            return Err(format!("无法终止进程树，taskkill 退出码：{status}"));
         }
-        let _ = child.wait();
         return Ok(());
     }
     #[allow(unreachable_code)]

@@ -17,7 +17,10 @@ fn list_plugin_catalog(state: State<'_, AppState>) -> Vec<PluginCatalogItem> {
 }
 
 #[tauri::command]
-fn list_installed_plugins(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<InstalledPlugin>, String> {
+fn list_installed_plugins(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<InstalledPlugin>, String> {
     state.plugins.installed(&app)
 }
 
@@ -37,24 +40,45 @@ fn get_harness_status(state: State<'_, AppState>) -> HarnessStatus {
 }
 
 #[tauri::command]
-fn install_plugin(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<PluginOperation, String> {
-    state
-        .plugins
-        .start_operation(&app, state.harness.clone(), &id, plugins::PluginAction::Install)
+fn install_plugin(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<PluginOperation, String> {
+    state.plugins.start_operation(
+        &app,
+        state.harness.clone(),
+        &id,
+        plugins::PluginAction::Install,
+    )
 }
 
 #[tauri::command]
-fn remove_plugin(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<PluginOperation, String> {
-    state
-        .plugins
-        .start_operation(&app, state.harness.clone(), &id, plugins::PluginAction::Remove)
+fn remove_plugin(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<PluginOperation, String> {
+    state.plugins.start_operation(
+        &app,
+        state.harness.clone(),
+        &id,
+        plugins::PluginAction::Remove,
+    )
 }
 
 #[tauri::command]
-fn update_plugin(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<PluginOperation, String> {
-    state
-        .plugins
-        .start_operation(&app, state.harness.clone(), &id, plugins::PluginAction::Update)
+fn update_plugin(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<PluginOperation, String> {
+    state.plugins.start_operation(
+        &app,
+        state.harness.clone(),
+        &id,
+        plugins::PluginAction::Update,
+    )
 }
 
 #[tauri::command]
@@ -87,6 +111,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             if window.label() == "main" && matches!(event, WindowEvent::CloseRequested { .. }) {
                 let state = window.app_handle().state::<AppState>();
+                let _ = state.plugins.stop();
                 let _ = state.harness.stop();
             }
         })
