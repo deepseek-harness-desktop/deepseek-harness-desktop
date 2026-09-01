@@ -11,6 +11,9 @@ use std::{
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
+const EXPECTED_NODE_VERSION_PREFIX: &str = "v24.";
+const EXPECTED_PNPM_VERSION_PREFIX: &str = "11.7.0";
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase", tag = "state")]
 pub enum HarnessStatus {
@@ -30,6 +33,23 @@ pub struct HarnessLaunchInfo {
     pub url: String,
     pub port: u16,
     pub version: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeToolStatus {
+    pub path: String,
+    pub available: bool,
+    pub version: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeStatus {
+    pub ready: bool,
+    pub node: RuntimeToolStatus,
+    pub pnpm: RuntimeToolStatus,
+    pub dsh: RuntimeToolStatus,
 }
 
 struct HarnessInner {
@@ -298,6 +318,18 @@ pub fn runtime_node(app: &AppHandle) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(node_binary_name()))
 }
 
+pub fn runtime_pnpm(app: &AppHandle) -> PathBuf {
+    let packaged = app
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|dir| dir.join("runtime").join("bin").join(pnpm_binary_name()));
+    packaged
+        .filter(|path| path.is_file())
+        .or_else(|| std::env::var_os("DSH_PNPM_PATH").map(PathBuf::from))
+        .unwrap_or_else(|| PathBuf::from(pnpm_binary_name()))
+}
+
 pub fn runtime_dsh_entry(app: &AppHandle) -> PathBuf {
     app.path()
         .resource_dir()
@@ -328,6 +360,101 @@ pub fn runtime_environment(node: &Path, app: &AppHandle) -> Vec<(String, String)
     }
     let joined = std::env::join_paths(paths).unwrap_or_default();
     vec![("PATH".to_string(), joined.to_string_lossy().to_string())]
+}
+
+pub fn runtime_status(app: &AppHandle) -> RuntimeStatus {
+    let node_path = runtime_node(app);
+    let mut node_command = Command::new(&node_path);
+    node_command
+        .arg("--version")
+        .envs(runtime_environment(&node_path, app));
+    let (node_available, node_version) = probe_version(node_command, EXPECTED_NODE_VERSION_PREFIX);
+
+    let pnpm_path = runtime_pnpm(app);
+    let (pnpm_available, pnpm_version) = if let Some(pnpm_cli) = runtime_pnpm_cli(app) {
+        let mut command = Command::new(&node_path);
+        command
+            .arg(pnpm_cli)
+            .arg("--version")
+            .envs(runtime_environment(&node_path, app));
+        probe_version(command, EXPECTED_PNPM_VERSION_PREFIX)
+    } else {
+        let mut command = Command::new(&pnpm_path);
+        command
+            .arg("--version")
+            .envs(runtime_environment(&node_path, app));
+        probe_version(command, EXPECTED_PNPM_VERSION_PREFIX)
+    };
+
+    let dsh_path = runtime_dsh_entry(app);
+    let dsh_version = dsh_version(app);
+    let dsh_available = dsh_path.is_file() && dsh_version != "unknown";
+
+    RuntimeStatus {
+        ready: node_available && pnpm_available && dsh_available,
+        node: RuntimeToolStatus {
+            path: node_path.display().to_string(),
+            available: node_available,
+            version: node_version,
+        },
+        pnpm: RuntimeToolStatus {
+            path: pnpm_path.display().to_string(),
+            available: pnpm_available,
+            version: pnpm_version,
+        },
+        dsh: RuntimeToolStatus {
+            path: dsh_path.display().to_string(),
+            available: dsh_available,
+            version: dsh_version,
+        },
+    }
+}
+
+fn runtime_pnpm_cli(app: &AppHandle) -> Option<PathBuf> {
+    let packaged = app
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|dir| dir.join("runtime/pnpm/bin/pnpm.cjs"));
+    packaged
+        .filter(|path| path.is_file())
+        .or_else(|| std::env::var_os("DSH_PNPM_CLI_PATH").map(PathBuf::from))
+        .filter(|path| path.is_file())
+        .or_else(|| {
+            let path =
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../node_modules/pnpm/bin/pnpm.cjs");
+            path.is_file().then_some(path)
+        })
+}
+
+fn probe_version(mut command: Command, expected_prefix: &str) -> (bool, String) {
+    match command.output() {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let version = stdout
+                .lines()
+                .find(|line| !line.trim().is_empty())
+                .map(str::trim)
+                .unwrap_or_else(|| {
+                    stderr
+                        .lines()
+                        .find(|line| !line.trim().is_empty())
+                        .unwrap_or("")
+                })
+                .to_string();
+            let available = output.status.success() && version.starts_with(expected_prefix);
+            (
+                available,
+                if version.is_empty() {
+                    "不可用".to_string()
+                } else {
+                    version
+                },
+            )
+        }
+        Err(error) => (false, format!("不可用：{error}")),
+    }
 }
 
 fn dsh_version(app: &AppHandle) -> String {
@@ -407,6 +534,14 @@ fn node_binary_name() -> &'static str {
         "node.exe"
     } else {
         "node"
+    }
+}
+
+fn pnpm_binary_name() -> &'static str {
+    if cfg!(windows) {
+        "pnpm.cmd"
+    } else {
+        "pnpm"
     }
 }
 

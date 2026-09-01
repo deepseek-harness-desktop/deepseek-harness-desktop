@@ -5,6 +5,7 @@ import type {
   InstalledPlugin,
   PluginCatalogItem,
   PluginOperation,
+  RuntimeStatus,
 } from "@/types";
 
 export const tauri = {
@@ -13,6 +14,7 @@ export const tauri = {
   startHarness: () => invoke<{ url: string; port: number; version: string }>("start_harness"),
   stopHarness: () => invoke<void>("stop_harness"),
   getHarnessStatus: () => invoke<HarnessStatus>("get_harness_status"),
+  getRuntimeStatus: () => invoke<RuntimeStatus>("get_runtime_status"),
   installPlugin: (id: string) => invoke<PluginOperation>("install_plugin", { id }),
   removePlugin: (id: string) => invoke<PluginOperation>("remove_plugin", { id }),
   updatePlugin: (id: string) => invoke<PluginOperation>("update_plugin", { id }),

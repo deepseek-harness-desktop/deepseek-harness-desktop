@@ -34,7 +34,7 @@ import { fallbackPluginCatalog } from "@/data/plugin-catalog";
 import { closeHarnessWindow, openHarnessWindow } from "@/lib/harness-window";
 import { tauri } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
-import type { HarnessStatus, InstalledPlugin, PluginCatalogItem, PluginOperation } from "@/types";
+import type { HarnessStatus, InstalledPlugin, PluginCatalogItem, PluginOperation, RuntimeStatus, RuntimeToolStatus } from "@/types";
 
 type View = "overview" | "plugins";
 type PluginAction = "install" | "remove" | "update";
@@ -63,6 +63,7 @@ export default function App() {
   const [catalog, setCatalog] = useState<PluginCatalogItem[]>(fallbackPluginCatalog);
   const [installed, setInstalled] = useState<InstalledPlugin[]>([]);
   const [harnessStatus, setHarnessStatus] = useState<HarnessStatus>({ state: "stopped" });
+  const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("全部");
   const [operations, setOperations] = useState<Record<string, PluginOperation>>({});
@@ -74,10 +75,11 @@ export default function App() {
   const [isOpeningHarness, setIsOpeningHarness] = useState(false);
 
   const loadData = useCallback(async () => {
-    const [catalogResult, installedResult, statusResult] = await Promise.allSettled([
+    const [catalogResult, installedResult, statusResult, runtimeResult] = await Promise.allSettled([
       tauri.listPluginCatalog(),
       tauri.listInstalledPlugins(),
       tauri.getHarnessStatus(),
+      tauri.getRuntimeStatus(),
     ]);
 
     if (catalogResult.status === "fulfilled" && catalogResult.value.length > 0) {
@@ -88,6 +90,9 @@ export default function App() {
     }
     if (statusResult.status === "fulfilled") {
       setHarnessStatus(statusResult.value);
+    }
+    if (runtimeResult.status === "fulfilled") {
+      setRuntimeStatus(runtimeResult.value);
     }
   }, []);
 
@@ -318,6 +323,7 @@ export default function App() {
               catalog={catalog}
               installedCount={installedCount}
               harnessStatus={harnessStatus}
+              runtimeStatus={runtimeStatus}
               onOpenPlugins={() => setView("plugins")}
               onStart={startHarness}
               onOpenHarness={openHarness}
@@ -361,14 +367,15 @@ function NavItem({ active, icon, label, count, onClick }: { active: boolean; ico
   );
 }
 
-function Overview({ catalog, installedCount, harnessStatus, onOpenPlugins, onStart, onOpenHarness, starting, opening }: { catalog: PluginCatalogItem[]; installedCount: number; harnessStatus: HarnessStatus; onOpenPlugins: () => void; onStart: () => void; onOpenHarness: () => void; starting: boolean; opening: boolean }) {
+function Overview({ catalog, installedCount, harnessStatus, runtimeStatus, onOpenPlugins, onStart, onOpenHarness, starting, opening }: { catalog: PluginCatalogItem[]; installedCount: number; harnessStatus: HarnessStatus; runtimeStatus: RuntimeStatus | null; onOpenPlugins: () => void; onStart: () => void; onOpenHarness: () => void; starting: boolean; opening: boolean }) {
   const ready = harnessStatus.state === "ready";
+  const runtimeReady = runtimeStatus?.ready === true;
   return (
     <>
       <section className="relative overflow-hidden rounded-2xl border bg-card/70 p-8">
         <div className="pointer-events-none absolute -right-16 -top-24 size-72 rounded-full bg-primary/10 blur-3xl" />
         <div className="relative max-w-2xl">
-          <Badge variant="default"><Sparkles className="mr-1.5 size-3" />桌面运行时已就绪</Badge>
+          <Badge variant={runtimeReady ? "default" : "warning"}><Sparkles className="mr-1.5 size-3" />{runtimeStatus ? runtimeReady ? "桌面运行时已就绪" : "运行时需要检查" : "正在检查运行时"}</Badge>
           <h1 className="mt-5 text-4xl font-semibold tracking-[-0.04em] text-zinc-50">把 Harness 变成<br /><span className="text-primary">可扩展的工作台。</span></h1>
           <p className="mt-4 max-w-xl text-[15px] leading-7 text-muted-foreground">通过内置 Node 24 和精选插件市场，一键管理 DeepSeek Harness。服务始终绑定在本机，模型密钥继续由 Harness 自己管理。</p>
           <div className="mt-7 flex flex-wrap gap-3">
@@ -397,9 +404,23 @@ function Overview({ catalog, installedCount, harnessStatus, onOpenPlugins, onSta
           <CardContent>
             <div className="grid grid-cols-2 gap-3">
               <InfoRow label="绑定地址" value={ready ? `127.0.0.1:${harnessStatus.port}` : "127.0.0.1 · 自动端口"} />
-              <InfoRow label="服务版本" value="@deepseek-ai/dsh" />
-              <InfoRow label="包管理器" value="pnpm 11.7.0" />
+              <InfoRow label="服务版本" value={runtimeStatus?.dsh.version === "unknown" ? "@deepseek-ai/dsh" : runtimeStatus?.dsh.version ?? "检查中"} />
+              <InfoRow label="包管理器" value={runtimeStatus?.pnpm.version ?? "检查中"} />
               <InfoRow label="运行配置" value="web profile" />
+            </div>
+            <div className="mt-4 rounded-lg border bg-background/30 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-medium">运行时健康检查</div>
+                  <div className="mt-1 text-xs text-muted-foreground">启动前验证内置 Node、pnpm 和 Harness 入口。</div>
+                </div>
+                <Badge variant={runtimeStatus ? runtimeReady ? "success" : "warning" : "secondary"}>{runtimeStatus ? runtimeReady ? "全部正常" : "存在问题" : "检查中"}</Badge>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <RuntimeTool label="Node" tool={runtimeStatus?.node} />
+                <RuntimeTool label="pnpm" tool={runtimeStatus?.pnpm} />
+                <RuntimeTool label="Harness" tool={runtimeStatus?.dsh} />
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -422,6 +443,10 @@ function StatCard({ icon, label, value, hint }: { icon: React.ReactNode; label: 
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return <div className="rounded-lg border bg-black/10 px-3 py-2.5"><div className="text-[11px] text-zinc-500">{label}</div><div className="mt-1 truncate text-sm text-zinc-200">{value}</div></div>;
+}
+
+function RuntimeTool({ label, tool }: { label: string; tool?: RuntimeToolStatus }) {
+  return <div className="min-w-0 rounded-md border bg-black/10 px-2.5 py-2"><div className="text-[11px] text-muted-foreground">{label}</div><div className={cn("mt-1 truncate text-xs", tool?.available ? "text-primary" : "text-muted-foreground")}>{tool?.version ?? "检查中"}</div></div>;
 }
 
 function PluginMarket({ catalog, categories, category, installed, operations, operationActions, operationLogs, copiedOperationId, platform, query, onCategoryChange, onQueryChange, onOperation, onCopyLog }: { catalog: PluginCatalogItem[]; categories: string[]; category: string; installed: InstalledPlugin[]; operations: Record<string, PluginOperation>; operationActions: Record<string, PluginAction>; operationLogs: Record<string, string>; copiedOperationId: string | null; platform: string; query: string; onCategoryChange: (category: string) => void; onQueryChange: (query: string) => void; onOperation: (plugin: PluginCatalogItem, action: PluginAction) => Promise<void>; onCopyLog: (operationId: string) => Promise<void> }) {

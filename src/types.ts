@@ -40,3 +40,16 @@ export type HarnessStatus =
   | { state: "ready"; url: string; port: number }
   | { state: "failed"; message: string; logPath: string }
   | { state: "stopped" };
+
+export interface RuntimeToolStatus {
+  path: string;
+  available: boolean;
+  version: string;
+}
+
+export interface RuntimeStatus {
+  ready: boolean;
+  node: RuntimeToolStatus;
+  pnpm: RuntimeToolStatus;
+  dsh: RuntimeToolStatus;
+}

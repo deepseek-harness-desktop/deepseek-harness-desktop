@@ -1,7 +1,7 @@
 mod harness;
 mod plugins;
 
-use harness::{HarnessController, HarnessLaunchInfo, HarnessStatus};
+use harness::{HarnessController, HarnessLaunchInfo, HarnessStatus, RuntimeStatus};
 use plugins::{InstalledPlugin, PluginCatalogItem, PluginManager, PluginOperation};
 use tauri::{AppHandle, Manager, State, WindowEvent};
 
@@ -37,6 +37,11 @@ fn stop_harness(state: State<'_, AppState>) -> Result<(), String> {
 #[tauri::command]
 fn get_harness_status(state: State<'_, AppState>) -> HarnessStatus {
     state.harness.status()
+}
+
+#[tauri::command]
+fn get_runtime_status(app: AppHandle) -> RuntimeStatus {
+    harness::runtime_status(&app)
 }
 
 #[tauri::command]
@@ -102,6 +107,7 @@ pub fn run() {
             start_harness,
             stop_harness,
             get_harness_status,
+            get_runtime_status,
             install_plugin,
             remove_plugin,
             update_plugin,
