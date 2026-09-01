@@ -1,0 +1,41 @@
+{
+  "name": "deepseek-harness-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "stage:runtime": "node scripts/stage-runtime.mjs",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:dev": "pnpm stage:runtime && tauri dev",
+    "tauri:build": "pnpm stage:runtime -- --require-node && tauri build"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.1.2-alpha.4"
+  },
+  "devDependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-opener": "^2",
+    "@tailwindcss/vite": "^4.1.13",
+    "@types/react": "^19.1.10",
+    "@types/react-dom": "^19.1.7",
+    "@vitejs/plugin-react": "^4.3.4",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.468.0",
+    "pnpm": "11.7.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "tailwind-merge": "^3.3.1",
+    "tailwindcss": "^4.1.13",
+    "typescript": "~5.6.2",
+    "vite": "^6.0.3",
+    "@tauri-apps/cli": "^2"
+  }
+}
