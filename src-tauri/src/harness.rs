@@ -47,6 +47,7 @@ pub struct RuntimeToolStatus {
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeStatus {
     pub ready: bool,
+    pub platform: String,
     pub node: RuntimeToolStatus,
     pub pnpm: RuntimeToolStatus,
     pub dsh: RuntimeToolStatus,
@@ -392,6 +393,7 @@ pub fn runtime_status(app: &AppHandle) -> RuntimeStatus {
 
     RuntimeStatus {
         ready: node_available && pnpm_available && dsh_available,
+        platform: current_platform().to_string(),
         node: RuntimeToolStatus {
             path: node_path.display().to_string(),
             available: node_available,
@@ -543,6 +545,30 @@ fn pnpm_binary_name() -> &'static str {
     } else {
         "pnpm"
     }
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+pub fn current_platform() -> &'static str {
+    "macos-arm64"
+}
+
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+pub fn current_platform() -> &'static str {
+    "macos-x64"
+}
+
+#[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+pub fn current_platform() -> &'static str {
+    "windows-x64"
+}
+
+#[cfg(not(any(
+    all(target_os = "macos", target_arch = "aarch64"),
+    all(target_os = "macos", target_arch = "x86_64"),
+    all(target_os = "windows", target_arch = "x86_64")
+)))]
+pub fn current_platform() -> &'static str {
+    "unsupported"
 }
 
 pub fn configure_process_group(command: &mut Command) {

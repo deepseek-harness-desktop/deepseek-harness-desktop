@@ -1,4 +1,5 @@
 export type SupportedPlatform = "macos-arm64" | "macos-x64" | "windows-x64";
+export type RuntimePlatform = SupportedPlatform | "unsupported";
 
 export interface PluginCatalogItem {
   id: string;
@@ -49,6 +50,7 @@ export interface RuntimeToolStatus {
 
 export interface RuntimeStatus {
   ready: boolean;
+  platform: RuntimePlatform;
   node: RuntimeToolStatus;
   pnpm: RuntimeToolStatus;
   dsh: RuntimeToolStatus;

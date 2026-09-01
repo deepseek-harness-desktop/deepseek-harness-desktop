@@ -16,8 +16,8 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
 use crate::harness::{
-    configure_process_group, runtime_dsh_entry, runtime_environment, runtime_node,
-    terminate_process_by_pid, HarnessController,
+    configure_process_group, current_platform, runtime_dsh_entry, runtime_environment,
+    runtime_node, terminate_process_by_pid, HarnessController,
 };
 
 const CATALOG_JSON: &str = include_str!("../resources/plugin-catalog.json");
@@ -147,6 +147,14 @@ impl PluginManager {
             .find(|plugin| plugin.id == id)
             .cloned()
             .ok_or_else(|| format!("插件不在精选清单中：{id}"))?;
+        if matches!(action, PluginAction::Install | PluginAction::Update)
+            && !plugin
+                .platforms
+                .iter()
+                .any(|platform| platform == current_platform())
+        {
+            return Err(format!("插件不支持当前平台：{}", current_platform()));
+        }
         let operation_id = format!("{}-{}", plugin.id, timestamp());
         let log_path = operation_log_path(app, &operation_id)?;
         let running = PluginOperation::Running {
