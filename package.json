@@ -11,10 +11,12 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "stage:runtime": "node scripts/stage-runtime.mjs",
+    "verify:runtime": "node scripts/verify-runtime.mjs",
+    "smoke:runtime": "node scripts/smoke-runtime.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "pnpm stage:runtime && tauri dev",
-    "tauri:build": "pnpm stage:runtime -- --require-node && tauri build"
+    "tauri:build": "pnpm stage:runtime -- --require-node && pnpm verify:runtime && pnpm smoke:runtime && tauri build"
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.1.2-alpha.4"
