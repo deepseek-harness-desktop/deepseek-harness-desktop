@@ -20,6 +20,8 @@ pnpm tauri:dev
 
 CI 在 macOS Intel、macOS ARM64 和 Windows x64 上执行同一套检查，并上传 DMG、NSIS/MSI 安装包。内置 runtime 不提交到仓库，只在目标平台构建时生成。推送 `v*` 标签或手动运行 `Release desktop packages` 时，会复用同一套三平台构建并发布 GitHub Release。
 
+当前发布包按无代码签名配置构建：Tauri 使用 `--no-sign`，macOS 的 `signingIdentity` 和 Windows 的 `certificateThumbprint` 均为空。用户首次打开 macOS 应用时可能需要在“系统设置 → 隐私与安全性”中手动允许；Windows 可能显示未知发布者提示。后续接入证书、公证或可信发布者时，再移除无签名配置并补充对应的 CI Secrets。
+
 Node 24 不需要在本项目中从源码编译。GitHub Actions 使用对应平台的 Node 24.20.0 runner，并将该平台的官方 Node 二进制复制进安装包；因此 macOS Intel、macOS ARM64 和 Windows x64 必须分别在匹配平台上构建。
 
 插件中心只允许安装项目内置清单中的固定版本，并通过 `dsh plugin --profile web` 执行安装、卸载和更新。插件是可执行代码，安装前请审阅来源、权限和许可证。
