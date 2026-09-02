@@ -581,12 +581,12 @@ pub fn current_platform() -> &'static str {
     "unsupported"
 }
 
-pub fn configure_process_group(command: &mut Command) {
+pub fn configure_process_group(_command: &mut Command) {
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
         unsafe {
-            command.pre_exec(|| {
+            _command.pre_exec(|| {
                 // Keep the Harness process in its own group so closing the desktop can
                 // terminate Node and any plugin child processes together.
                 libc::setpgid(0, 0);
