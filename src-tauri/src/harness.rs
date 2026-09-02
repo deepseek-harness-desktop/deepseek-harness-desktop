@@ -108,7 +108,8 @@ impl HarnessController {
             .map_err(|error| format!("无法创建 Harness 日志目录：{error}"))?;
         let log_path = log_dir.join(format!("harness-{}.log", timestamp()));
         let node = runtime_node(app);
-        let dsh_entry = runtime_dsh_entry(app);
+        let dsh_root = crate::core::active_dsh_root(app);
+        let dsh_entry = crate::core::active_dsh_entry(app);
         let dsh_home = data_dir.join("dsh");
         fs::create_dir_all(&dsh_home)
             .map_err(|error| format!("无法创建 Harness 数据目录：{error}"))?;
@@ -118,7 +119,7 @@ impl HarnessController {
         command
             .arg(&dsh_entry)
             .args(["web", "--host", "127.0.0.1", "--port", "0", "--no-open"])
-            .current_dir(&data_dir)
+            .current_dir(&dsh_root)
             .env("DSH_HOME", &dsh_home)
             .env("DSH_NODE_PATH", &node)
             .env("DSH_DESKTOP_RUNTIME", "1")
@@ -331,16 +332,48 @@ pub fn runtime_pnpm(app: &AppHandle) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(pnpm_binary_name()))
 }
 
-pub fn runtime_dsh_entry(app: &AppHandle) -> PathBuf {
+pub fn bundled_dsh_root(app: &AppHandle) -> PathBuf {
     app.path()
         .resource_dir()
         .ok()
-        .map(|dir| dir.join("runtime/server/node_modules/@deepseek-ai/dsh/lib/bin.js"))
-        .filter(|path| path.is_file())
-        .unwrap_or_else(|| {
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../node_modules/@deepseek-ai/dsh/lib/bin.js")
+        .map(|dir| dir.join("runtime/server"))
+        .filter(|path| {
+            path.join("node_modules/@deepseek-ai/dsh/lib/bin.js")
+                .is_file()
         })
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".."))
+}
+
+pub fn bundled_dsh_entry(app: &AppHandle) -> PathBuf {
+    bundled_dsh_root(app).join("node_modules/@deepseek-ai/dsh/lib/bin.js")
+}
+
+pub fn bundled_dsh_version(app: &AppHandle) -> String {
+    dsh_version_for_entry(&bundled_dsh_entry(app))
+}
+
+fn dsh_version_for_entry(entry: &Path) -> String {
+    let package = entry
+        .parent()
+        .and_then(Path::parent)
+        .map(|path| path.join("package.json"));
+    let Some(package) = package else {
+        return "unknown".to_string();
+    };
+    fs::read_to_string(package)
+        .ok()
+        .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
+        .and_then(|package| {
+            package
+                .get("version")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn dsh_version(app: &AppHandle) -> String {
+    dsh_version_for_entry(&crate::core::active_dsh_entry(app))
 }
 
 pub fn runtime_environment(node: &Path, app: &AppHandle) -> Vec<(String, String)> {
@@ -387,7 +420,7 @@ pub fn runtime_status(app: &AppHandle) -> RuntimeStatus {
         probe_version(command, EXPECTED_PNPM_VERSION_PREFIX)
     };
 
-    let dsh_path = runtime_dsh_entry(app);
+    let dsh_path = crate::core::active_dsh_entry(app);
     let dsh_version = dsh_version(app);
     let dsh_available = dsh_path.is_file() && dsh_version != "unknown";
 
@@ -457,29 +490,6 @@ fn probe_version(mut command: Command, expected_prefix: &str) -> (bool, String) 
         }
         Err(error) => (false, format!("不可用：{error}")),
     }
-}
-
-fn dsh_version(app: &AppHandle) -> String {
-    let package = app
-        .path()
-        .resource_dir()
-        .ok()
-        .map(|dir| dir.join("runtime/server/node_modules/@deepseek-ai/dsh/package.json"))
-        .filter(|path| path.is_file())
-        .unwrap_or_else(|| {
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../node_modules/@deepseek-ai/dsh/package.json")
-        });
-    fs::read_to_string(package)
-        .ok()
-        .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
-        .and_then(|package| {
-            package
-                .get("version")
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_string)
-        })
-        .unwrap_or_else(|| "unknown".to_string())
 }
 
 fn timestamp() -> u128 {

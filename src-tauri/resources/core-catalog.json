@@ -1,0 +1,122 @@
+[
+  {
+    "id": "0.1.2-alpha.4",
+    "version": "0.1.2-alpha.4",
+    "releaseTag": "dsh-0.1.2-alpha.4-33554293600",
+    "sourceUrl": "https://github.com/dsh-tauri-desk/deepseek-harness-pkg/releases/tag/dsh-0.1.2-alpha.4-33554293600",
+    "publishedAt": "2026-09-01T20:18:54Z",
+    "assets": {
+      "macos-arm64": {
+        "url": "https://github.com/dsh-tauri-desk/deepseek-harness-pkg/releases/download/dsh-0.1.2-alpha.4-33554293600/deepseek-harness-pkg-macos-arm64.zip",
+        "sha256": "cee1c29ffde0a975c754600d32128f8918ee7a21d80f1b62d4df8b1eba30d8f3",
+        "size": 41071230
+      },
+      "macos-x64": {
+        "url": "https://github.com/dsh-tauri-desk/deepseek-harness-pkg/releases/download/dsh-0.1.2-alpha.4-33554293600/deepseek-harness-pkg-macos-x64.zip",
+        "sha256": "d6028478aa3d2c10a764782cfcf9bb578e5bae5bad6e6a281f3f30ae5a856993",
+        "size": 41948327
+      },
+      "windows-x64": {
+        "url": "https://github.com/dsh-tauri-desk/deepseek-harness-pkg/releases/download/dsh-0.1.2-alpha.4-33554293600/deepseek-harness-pkg-windows.zip",
+        "sha256": "c025fea114becbef57975425812e7168b5366ec50713cfa847bcc381fdaaafe9",
+        "size": 40968596
+      }
+    }
+  },
+  {
+    "id": "0.1.2-alpha.3",
+    "version": "0.1.2-alpha.3",
+    "releaseTag": "dsh-0.1.2-alpha.3-33444825807",
+    "sourceUrl": "https://github.com/dsh-tauri-desk/deepseek-harness-pkg/releases/tag/dsh-0.1.2-alpha.3-33444825807",
+    "publishedAt": "2026-08-31T22:11:01Z",
+    "assets": {
+      "macos-arm64": {
+        "url": "https://github.com/dsh-tauri-desk/deepseek-harness-pkg/releases/download/dsh-0.1.2-alpha.3-33444825807/deepseek-harness-pkg-macos-arm64.zip",
+        "sha256": "a55f6160a38a2d9ff1e27ee8bc3d18142b5827f05904c9600b147733904102a6",
+        "size": 41201968
+      },
+      "macos-x64": {
+        "url": "https://github.com/dsh-tauri-desk/deepseek-harness-pkg/releases/download/dsh-0.1.2-alpha.3-33444825807/deepseek-harness-pkg-macos-x64.zip",
+        "sha256": "62a5d10b8327ad69f6acd51d42fb52d211d8bdb194569b95463914d9bfd05af6",
+        "size": 42079065
+      },
+      "windows-x64": {
+        "url": "https://github.com/dsh-tauri-desk/deepseek-harness-pkg/releases/download/dsh-0.1.2-alpha.3-33444825807/deepseek-harness-pkg-windows.zip",
+        "sha256": "330bf0d5225a74b9516e1154b163d7b065024c49931ab165f4f274c4ef505f2b",
+        "size": 41096554
+      }
+    }
+  },
+  {
+    "id": "0.1.2-alpha.2",
+    "version": "0.1.2-alpha.2",
+    "releaseTag": "dsh-0.1.2-alpha.2-33320261905",
+    "sourceUrl": "https://github.com/dsh-tauri-desk/deepseek-harness-pkg/releases/tag/dsh-0.1.2-alpha.2-33320261905",
+    "publishedAt": "2026-08-30T15:42:31Z",
+    "assets": {
+      "macos-arm64": {
+        "url": "https://github.com/dsh-tauri-desk/deepseek-harness-pkg/releases/download/dsh-0.1.2-alpha.2-33320261905/deepseek-harness-pkg-macos-arm64.zip",
+        "sha256": "359a784a315697b877481c78b1444299e97b4855fa76ff43c3a41c2499cdb342",
+        "size": 41188412
+      },
+      "macos-x64": {
+        "url": "https://github.com/dsh-tauri-desk/deepseek-harness-pkg/releases/download/dsh-0.1.2-alpha.2-33320261905/deepseek-harness-pkg-macos-x64.zip",
+        "sha256": "fe7c270a019f45b13b44d1a354edd27895ff9721374661e2eaaa78d6e450c72e",
+        "size": 42065509
+      },
+      "windows-x64": {
+        "url": "https://github.com/dsh-tauri-desk/deepseek-harness-pkg/releases/download/dsh-0.1.2-alpha.2-33320261905/deepseek-harness-pkg-windows.zip",
+        "sha256": "c1b03e498fb78aedb4eaabcf920e17ca5c3352e176b36bdcb22441295f9fb2e3",
+        "size": 41083622
+      }
+    }
+  },
+  {
+    "id": "0.1.1-rc.2",
+    "version": "0.1.1-rc.2",
+    "releaseTag": "dsh-0.1.1-rc.2-32485170079",
+    "sourceUrl": "https://github.com/dsh-tauri-desk/deepseek-harness-pkg/releases/tag/dsh-0.1.1-rc.2-32485170079",
+    "publishedAt": "2026-08-21T13:09:50Z",
+    "assets": {
+      "macos-arm64": {
+        "url": "https://github.com/dsh-tauri-desk/deepseek-harness-pkg/releases/download/dsh-0.1.1-rc.2-32485170079/deepseek-harness-pkg-macos-arm64.zip",
+        "sha256": "88d49c90fd066ae158a6b1b10d97b68953f37cf99ca09d2eade55e597775f605",
+        "size": 39097862
+      },
+      "macos-x64": {
+        "url": "https://github.com/dsh-tauri-desk/deepseek-harness-pkg/releases/download/dsh-0.1.1-rc.2-32485170079/deepseek-harness-pkg-macos-x64.zip",
+        "sha256": "396335ce5a13f370f05e08e3a5567c2e7e0b8ef2845bd71d117ca2e52cc9083d",
+        "size": 39963468
+      },
+      "windows-x64": {
+        "url": "https://github.com/dsh-tauri-desk/deepseek-harness-pkg/releases/download/dsh-0.1.1-rc.2-32485170079/deepseek-harness-pkg-windows.zip",
+        "sha256": "6ed77bae333650e4ed3a82b440a1d666d5fbc01ad7a2becd78d7afc4ff49aa8c",
+        "size": 39046365
+      }
+    }
+  },
+  {
+    "id": "0.1.1-rc.1",
+    "version": "0.1.1-rc.1",
+    "releaseTag": "dsh-0.1.1-rc.1-32457794457",
+    "sourceUrl": "https://github.com/dsh-tauri-desk/deepseek-harness-pkg/releases/tag/dsh-0.1.1-rc.1-32457794457",
+    "publishedAt": "2026-08-21T07:17:06Z",
+    "assets": {
+      "macos-arm64": {
+        "url": "https://github.com/dsh-tauri-desk/deepseek-harness-pkg/releases/download/dsh-0.1.1-rc.1-32457794457/deepseek-harness-pkg-macos-arm64.zip",
+        "sha256": "4103cc87c4bcef89eed8557ba9223c12c3688fe0f5b979b52dbdf0a38897f1b1",
+        "size": 39071775
+      },
+      "macos-x64": {
+        "url": "https://github.com/dsh-tauri-desk/deepseek-harness-pkg/releases/download/dsh-0.1.1-rc.1-32457794457/deepseek-harness-pkg-macos-x64.zip",
+        "sha256": "826a8271fb596a0adc6c3be75357d4348fb9010c56793a373223cbc6f6ebc8a9",
+        "size": 39937379
+      },
+      "windows-x64": {
+        "url": "https://github.com/dsh-tauri-desk/deepseek-harness-pkg/releases/download/dsh-0.1.1-rc.1-32457794457/deepseek-harness-pkg-windows.zip",
+        "sha256": "76db393fba5d19b689ed32734870f709e15060d82c533616f8873c6006f6fcbf",
+        "size": 39020953
+      }
+    }
+  }
+]

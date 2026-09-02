@@ -15,9 +15,12 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
-use crate::harness::{
-    configure_process_group, current_platform, runtime_dsh_entry, runtime_environment,
-    runtime_node, terminate_process_by_pid, HarnessController,
+use crate::{
+    core::{active_dsh_entry, active_dsh_root},
+    harness::{
+        configure_process_group, current_platform, runtime_environment, runtime_node,
+        terminate_process_by_pid, HarnessController,
+    },
 };
 
 const CATALOG_JSON: &str = include_str!("../resources/plugin-catalog.json");
@@ -327,7 +330,8 @@ fn run_dsh_plugin_command(
     let dsh_home = data_dir.join("dsh");
     fs::create_dir_all(&dsh_home).map_err(|error| format!("无法创建 DSH_HOME：{error}"))?;
     let node = runtime_node(app);
-    let dsh_entry = runtime_dsh_entry(app);
+    let dsh_entry = active_dsh_entry(app);
+    let dsh_root = active_dsh_root(app);
     let action_arg = match action {
         PluginAction::Install => "add",
         PluginAction::Remove => "remove",
@@ -341,7 +345,7 @@ fn run_dsh_plugin_command(
     command
         .arg(&dsh_entry)
         .args(["plugin", "--profile", "web", action_arg, package_arg])
-        .current_dir(&data_dir)
+        .current_dir(&dsh_root)
         .env("DSH_HOME", &dsh_home)
         .env("DSH_NODE_PATH", &node)
         .env("DSH_DESKTOP_RUNTIME", "1")

@@ -8,8 +8,10 @@ import {
   CircleDot,
   Copy,
   Cpu,
+  Download,
   ExternalLink,
   Github,
+  History,
   LayoutDashboard,
   LoaderCircle,
   Package,
@@ -34,9 +36,9 @@ import { fallbackPluginCatalog } from "@/data/plugin-catalog";
 import { closeHarnessWindow, openHarnessWindow } from "@/lib/harness-window";
 import { tauri } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
-import type { HarnessStatus, InstalledPlugin, PluginCatalogItem, PluginOperation, RuntimePlatform, RuntimeStatus, RuntimeToolStatus } from "@/types";
+import type { CoreVersion, HarnessStatus, InstalledPlugin, PluginCatalogItem, PluginOperation, RuntimePlatform, RuntimeStatus, RuntimeToolStatus } from "@/types";
 
-type View = "overview" | "plugins";
+type View = "overview" | "plugins" | "cores";
 type PluginAction = "install" | "remove" | "update";
 
 const sleep = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
@@ -56,6 +58,11 @@ function platformLabel(platform: RuntimePlatform) {
     "windows-x64": "Windows x64",
     unsupported: "当前平台暂不支持",
   }[platform];
+}
+
+function formatBytes(size: number) {
+  if (!size) return "内置";
+  return (size / 1024 / 1024).toFixed(1) + " MB";
 }
 
 function supportsPlatform(plugin: PluginCatalogItem, platform: RuntimePlatform) {
@@ -78,6 +85,7 @@ export default function App() {
   const [view, setView] = useState<View>("overview");
   const [catalog, setCatalog] = useState<PluginCatalogItem[]>(fallbackPluginCatalog);
   const [installed, setInstalled] = useState<InstalledPlugin[]>([]);
+  const [cores, setCores] = useState<CoreVersion[]>([]);
   const [harnessStatus, setHarnessStatus] = useState<HarnessStatus>({ state: "stopped" });
   const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null);
   const [query, setQuery] = useState("");
@@ -89,13 +97,15 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const [isOpeningHarness, setIsOpeningHarness] = useState(false);
+  const [coreBusyId, setCoreBusyId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
-    const [catalogResult, installedResult, statusResult, runtimeResult] = await Promise.allSettled([
+    const [catalogResult, installedResult, statusResult, runtimeResult, coresResult] = await Promise.allSettled([
       tauri.listPluginCatalog(),
       tauri.listInstalledPlugins(),
       tauri.getHarnessStatus(),
       tauri.getRuntimeStatus(),
+      tauri.listCoreVersions(),
     ]);
 
     if (catalogResult.status === "fulfilled" && catalogResult.value.length > 0) {
@@ -109,6 +119,9 @@ export default function App() {
     }
     if (runtimeResult.status === "fulfilled") {
       setRuntimeStatus(runtimeResult.value);
+    }
+    if (coresResult.status === "fulfilled") {
+      setCores(coresResult.value);
     }
   }, []);
 
@@ -185,6 +198,96 @@ export default function App() {
       setHarnessStatus({ state: "stopped" });
     } catch (error) {
       setNotice(`Harness 停止失败：${errorMessage(error)}`);
+    }
+  };
+
+  const showCoreLaunch = async (result: { launch?: { url: string; port: number } }) => {
+    if (!result.launch) {
+      return;
+    }
+    setHarnessStatus({ state: "ready", url: result.launch.url, port: result.launch.port });
+    await openHarnessWindow(result.launch.url);
+  };
+
+  const installCore = async (core: CoreVersion) => {
+    if (!window.confirm("下载 Harness " + core.version + "？\n\n来源：" + core.sourceUrl + "\n下载大小：" + formatBytes(core.size) + "\n\n下载完成后仍需手动切换版本。")) {
+      return;
+    }
+    setCoreBusyId(core.id);
+    setNotice(null);
+    try {
+      await tauri.installCore(core.id);
+      await loadData();
+      setNotice("Harness " + core.version + " 已安装，可以切换到该版本。");
+    } catch (error) {
+      setNotice("Harness " + core.version + " 安装失败：" + errorMessage(error));
+    } finally {
+      setCoreBusyId(null);
+    }
+  };
+
+  const activateCore = async (core: CoreVersion) => {
+    if (!window.confirm("切换到 Harness " + core.version + "？\n\n如果 Harness 正在运行，桌面端会停止并重启服务。当前 web profile 中的插件也会随核心版本重新加载。")) {
+      return;
+    }
+    setCoreBusyId(core.id);
+    setNotice(null);
+    try {
+      const result = await tauri.activateCore(core.id);
+      await showCoreLaunch(result);
+      await loadData();
+      setNotice("已切换到 Harness " + result.version + (result.restarted ? "，服务已重启。" : "。"));
+    } catch (error) {
+      setNotice("Harness 版本切换失败：" + errorMessage(error));
+      const status = await tauri.getHarnessStatus().catch(() => null);
+      if (status?.state === "ready") {
+        setHarnessStatus(status);
+        await openHarnessWindow(status.url).catch(() => undefined);
+      }
+      await loadData();
+    } finally {
+      setCoreBusyId(null);
+    }
+  };
+
+  const upgradeCore = async () => {
+    const latest = cores[0];
+    if (!latest || latest.active) {
+      setNotice("当前已经是可用的最新 Harness 核心版本。");
+      return;
+    }
+    if (!window.confirm("升级到 Harness " + latest.version + "？\n\n来源：" + latest.sourceUrl + "\n下载大小：" + (latest.size ? formatBytes(latest.size) : "已内置") + "\n\n如果服务正在运行，升级后会自动重启。")) {
+      return;
+    }
+    setCoreBusyId("upgrade");
+    setNotice(null);
+    try {
+      const result = await tauri.upgradeCore();
+      await showCoreLaunch(result);
+      await loadData();
+      setNotice("Harness 已升级到 " + result.version + (result.restarted ? "，服务已重启。" : "。"));
+    } catch (error) {
+      setNotice("Harness 升级失败：" + errorMessage(error));
+      await loadData();
+    } finally {
+      setCoreBusyId(null);
+    }
+  };
+
+  const removeCore = async (core: CoreVersion) => {
+    if (!window.confirm("删除已下载的 Harness " + core.version + "？\n\n这不会影响内置版本和 web profile 数据。")) {
+      return;
+    }
+    setCoreBusyId(core.id);
+    setNotice(null);
+    try {
+      await tauri.removeCore(core.id);
+      await loadData();
+      setNotice("Harness " + core.version + " 已删除。");
+    } catch (error) {
+      setNotice("Harness " + core.version + " 删除失败：" + errorMessage(error));
+    } finally {
+      setCoreBusyId(null);
     }
   };
 
@@ -281,6 +384,7 @@ export default function App() {
         <div className="mt-9 space-y-1">
           <div className="px-3 pb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">工作台</div>
           <NavItem active={view === "overview"} icon={<LayoutDashboard />} label="概览" onClick={() => setView("overview")} />
+          <NavItem active={view === "cores"} icon={<History />} label="核心版本" count={cores.filter((core) => core.installed).length} onClick={() => setView("cores")} />
           <NavItem active={view === "plugins"} icon={<Boxes />} label="插件市场" count={catalog.length} onClick={() => setView("plugins")} />
         </div>
 
@@ -306,7 +410,7 @@ export default function App() {
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <span>DeepSeek Harness</span>
             <ChevronRight className="size-4 text-zinc-600" />
-            <span className="text-foreground">{view === "overview" ? "概览" : "插件市场"}</span>
+            <span className="text-foreground">{view === "overview" ? "概览" : view === "cores" ? "核心版本" : "插件市场"}</span>
           </div>
           <div className="flex items-center gap-3">
             <Badge variant={ready ? "success" : harnessStatus.state === "failed" ? "warning" : "secondary"}>
@@ -342,10 +446,20 @@ export default function App() {
               harnessStatus={harnessStatus}
               runtimeStatus={runtimeStatus}
               onOpenPlugins={() => setView("plugins")}
+              onOpenCores={() => setView("cores")}
               onStart={startHarness}
               onOpenHarness={openHarness}
               starting={isStarting}
               opening={isOpeningHarness}
+            />
+          ) : view === "cores" ? (
+            <CoreManager
+              cores={cores}
+              busyId={coreBusyId}
+              onInstall={installCore}
+              onActivate={activateCore}
+              onRemove={removeCore}
+              onUpgrade={upgradeCore}
             />
           ) : (
             <PluginMarket
@@ -385,7 +499,7 @@ function NavItem({ active, icon, label, count, onClick }: { active: boolean; ico
   );
 }
 
-function Overview({ catalog, installedCount, harnessStatus, runtimeStatus, onOpenPlugins, onStart, onOpenHarness, starting, opening }: { catalog: PluginCatalogItem[]; installedCount: number; harnessStatus: HarnessStatus; runtimeStatus: RuntimeStatus | null; onOpenPlugins: () => void; onStart: () => void; onOpenHarness: () => void; starting: boolean; opening: boolean }) {
+function Overview({ catalog, installedCount, harnessStatus, runtimeStatus, onOpenPlugins, onOpenCores, onStart, onOpenHarness, starting, opening }: { catalog: PluginCatalogItem[]; installedCount: number; harnessStatus: HarnessStatus; runtimeStatus: RuntimeStatus | null; onOpenPlugins: () => void; onOpenCores: () => void; onStart: () => void; onOpenHarness: () => void; starting: boolean; opening: boolean }) {
   const ready = harnessStatus.state === "ready";
   const runtimeReady = runtimeStatus?.ready === true;
   return (
@@ -403,6 +517,7 @@ function Overview({ catalog, installedCount, harnessStatus, runtimeStatus, onOpe
               {!starting && !opening && <ArrowUpRight />}
             </Button>
             <Button size="lg" variant="outline" onClick={onOpenPlugins}><Boxes />查看精选插件</Button>
+            <Button size="lg" variant="ghost" onClick={onOpenCores}><History />管理核心版本</Button>
           </div>
         </div>
       </section>
@@ -465,6 +580,95 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 function RuntimeTool({ label, tool }: { label: string; tool?: RuntimeToolStatus }) {
   return <div className="min-w-0 rounded-md border bg-black/10 px-2.5 py-2"><div className="text-[11px] text-muted-foreground">{label}</div><div className={cn("mt-1 truncate text-xs", tool?.available ? "text-primary" : "text-muted-foreground")}>{tool?.version ?? "检查中"}</div></div>;
+}
+
+function CoreManager({ cores, busyId, onInstall, onActivate, onRemove, onUpgrade }: { cores: CoreVersion[]; busyId: string | null; onInstall: (core: CoreVersion) => Promise<void>; onActivate: (core: CoreVersion) => Promise<void>; onRemove: (core: CoreVersion) => Promise<void>; onUpgrade: () => Promise<void> }) {
+  const active = cores.find((core) => core.active);
+  const latest = cores[0];
+  return (
+    <>
+      <div className="flex flex-wrap items-end justify-between gap-5">
+        <div>
+          <div className="flex items-center gap-2 text-sm text-primary"><History className="size-4" />运行时版本管理</div>
+          <h1 className="mt-2 text-3xl font-semibold tracking-[-0.035em]">Harness 核心版本</h1>
+          <p className="mt-2 text-sm text-muted-foreground">选择、升级或回滚 dsh web 核心。Node 24 和 pnpm 保持由桌面端统一管理。</p>
+        </div>
+        <Button disabled={busyId !== null || !latest || latest.active} onClick={() => void onUpgrade()}>
+          {busyId === "upgrade" ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <Download data-icon="inline-start" />}
+          {busyId === "upgrade" ? "升级中" : latest?.active ? "已是最新版本" : "升级到最新"}
+        </Button>
+      </div>
+
+      <Card className="bg-card/60">
+        <CardHeader className="flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle>当前激活版本</CardTitle>
+            <CardDescription className="mt-1.5">新版本先下载到独立目录，切换时才会改变 Harness 服务使用的入口。</CardDescription>
+          </div>
+          <Badge variant="success"><Check data-icon="inline-start" />{active ? "v" + active.version : "检查中"}</Badge>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-3">
+          <InfoRow label="激活版本" value={active ? "v" + active.version : "检查中"} />
+          <InfoRow label="来源" value={active?.bundled ? "随应用内置" : "本地版本目录"} />
+          <InfoRow label="插件 profile" value="web · 共享数据目录" />
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        {cores.map((core) => (
+          <CoreCard
+            key={core.id}
+            core={core}
+            busy={busyId === core.id || busyId === "upgrade"}
+            onInstall={onInstall}
+            onActivate={onActivate}
+            onRemove={onRemove}
+          />
+        ))}
+      </div>
+      <div className="flex items-start gap-2 text-xs text-zinc-500"><TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-300" />回滚只切换 Harness 核心，不会回滚 web profile 中已经安装的插件；旧核心与插件可能存在兼容性差异。</div>
+    </>
+  );
+}
+
+function CoreCard({ core, busy, onInstall, onActivate, onRemove }: { core: CoreVersion; busy: boolean; onInstall: (core: CoreVersion) => Promise<void>; onActivate: (core: CoreVersion) => Promise<void>; onRemove: (core: CoreVersion) => Promise<void> }) {
+  return (
+    <Card className="flex flex-col bg-card/60 transition-colors hover:border-zinc-600">
+      <CardHeader className="pb-4">
+        <div className="flex items-start gap-4">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl border bg-zinc-900 text-primary"><Cpu className="size-5" /></div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle>v{core.version}</CardTitle>
+              {core.active && <Badge variant="success">正在使用</Badge>}
+              {core.bundled && <Badge variant="secondary">随应用内置</Badge>}
+              {!core.supported && <Badge variant="warning">当前平台不支持</Badge>}
+            </div>
+            <CardDescription className="mt-1.5 truncate">{core.releaseTag}</CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="flex flex-1 flex-col gap-4">
+        <div className="grid grid-cols-2 gap-3 rounded-lg border bg-black/10 p-3 text-xs">
+          <div><div className="text-zinc-500">安装状态</div><div className="mt-1 text-zinc-300">{core.bundled ? "安装包自带" : core.installed ? "已下载" : "未下载"}</div></div>
+          <div><div className="text-zinc-500">下载大小</div><div className="mt-1 text-zinc-300">{formatBytes(core.size)}</div></div>
+          <div><div className="text-zinc-500">发布标识</div><div className="mt-1 truncate text-zinc-300">{core.releaseTag}</div></div>
+          <div><div className="text-zinc-500">更新日期</div><div className="mt-1 text-zinc-300">{core.publishedAt ? new Date(core.publishedAt).toLocaleDateString("zh-CN") : "随应用发布"}</div></div>
+        </div>
+        <div className="mt-auto flex items-center justify-between gap-3">
+          <a className="flex min-w-0 items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300" href={core.sourceUrl} target="_blank" rel="noreferrer">
+            <Github className="size-3.5 shrink-0" /><span className="truncate">查看发布来源</span><ExternalLink className="size-3 shrink-0" />
+          </a>
+          <div className="flex gap-2">
+            {!core.installed && !core.bundled && <Button size="sm" disabled={busy || !core.supported} onClick={() => void onInstall(core)}>{busy ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <Download data-icon="inline-start" />}{core.supported ? "下载" : "不支持"}</Button>}
+            {core.installed && !core.active && <Button size="sm" disabled={busy || !core.supported} onClick={() => void onActivate(core)}>{busy ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <History data-icon="inline-start" />}切换</Button>}
+            {core.active && <Button size="sm" variant="outline" disabled><Check data-icon="inline-start" />当前使用</Button>}
+            {core.installed && !core.bundled && !core.active && <Button size="sm" variant="ghost" disabled={busy} title="删除版本" onClick={() => void onRemove(core)}><Trash2 data-icon="inline-start" />删除</Button>}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function PluginMarket({ catalog, categories, category, installed, operations, operationActions, operationLogs, copiedOperationId, platform, platformId, query, onCategoryChange, onQueryChange, onOperation, onCopyLog }: { catalog: PluginCatalogItem[]; categories: string[]; category: string; installed: InstalledPlugin[]; operations: Record<string, PluginOperation>; operationActions: Record<string, PluginAction>; operationLogs: Record<string, string>; copiedOperationId: string | null; platform: string; platformId: RuntimePlatform; query: string; onCategoryChange: (category: string) => void; onQueryChange: (query: string) => void; onOperation: (plugin: PluginCatalogItem, action: PluginAction) => Promise<void>; onCopyLog: (operationId: string) => Promise<void> }) {

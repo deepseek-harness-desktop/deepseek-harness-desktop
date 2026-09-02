@@ -1,6 +1,25 @@
 export type SupportedPlatform = "macos-arm64" | "macos-x64" | "windows-x64";
 export type RuntimePlatform = SupportedPlatform | "unsupported";
 
+export interface CoreVersion {
+  id: string;
+  version: string;
+  releaseTag: string;
+  sourceUrl: string;
+  publishedAt: string;
+  installed: boolean;
+  active: boolean;
+  bundled: boolean;
+  supported: boolean;
+  size: number;
+}
+
+export interface CoreActionResult {
+  version: string;
+  restarted: boolean;
+  launch?: HarnessLaunchInfo;
+}
+
 export interface PluginCatalogItem {
   id: string;
   name: string;

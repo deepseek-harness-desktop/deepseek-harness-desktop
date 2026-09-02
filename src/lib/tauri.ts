@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type {
+  CoreActionResult,
+  CoreVersion,
   HarnessStatus,
   InstalledPlugin,
   PluginCatalogItem,
@@ -9,6 +11,11 @@ import type {
 } from "@/types";
 
 export const tauri = {
+  listCoreVersions: () => invoke<CoreVersion[]>("list_core_versions"),
+  installCore: (id: string) => invoke<CoreVersion>("install_core", { id }),
+  activateCore: (id: string) => invoke<CoreActionResult>("activate_core", { id }),
+  upgradeCore: () => invoke<CoreActionResult>("upgrade_core"),
+  removeCore: (id: string) => invoke<void>("remove_core", { id }),
   listPluginCatalog: () => invoke<PluginCatalogItem[]>("list_plugin_catalog"),
   listInstalledPlugins: () => invoke<InstalledPlugin[]>("list_installed_plugins"),
   startHarness: () => invoke<{ url: string; port: number; version: string }>("start_harness"),
