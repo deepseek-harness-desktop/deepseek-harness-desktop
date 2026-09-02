@@ -1,0 +1,13 @@
+nodeLinker: hoisted
+publicHoistPattern:
+  - '*'
+shamefullyHoist: true
+
+allowBuilds:
+  '@deepseek-ai/dsh-subprocess-local': true
+  '@google/genai': true
+  koffi: true
+  node-pty: true
+  protobufjs: true
+
+minimumReleaseAge: 0

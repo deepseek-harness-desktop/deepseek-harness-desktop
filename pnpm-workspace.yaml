@@ -1,3 +1,13 @@
+packages:
+  - '.'
+
+# Keep the shipped runtime's dependency tree portable across archives and
+# machines. Tauri resources do not preserve pnpm's root symlink layout.
+nodeLinker: hoisted
+publicHoistPattern:
+  - '*'
+shamefullyHoist: true
+
 allowBuilds:
   '@deepseek-ai/dsh-subprocess-local': true
   '@google/genai': true
@@ -5,3 +15,8 @@ allowBuilds:
   koffi: true
   node-pty: true
   protobufjs: true
+
+# Runtime dependencies are already pinned by pnpm-lock.yaml. Disable pnpm's
+# publication-age gate so a newly released, pinned Harness version can build
+# immediately in CI.
+minimumReleaseAge: 0

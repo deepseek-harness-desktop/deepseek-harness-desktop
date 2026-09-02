@@ -35,6 +35,10 @@ if (!/^v24\./.test(nodeVersion)) {
 
 const pnpmVersion = execFileSync(nodeBinary, [pnpmCli, "--version"], { encoding: "utf8" }).trim();
 const rootManifest = JSON.parse(readFileSync(join(projectRoot, "package.json"), "utf8"));
+const expectedPnpmVersion = rootManifest.packageManager?.replace(/^pnpm@/, "");
+if (expectedPnpmVersion && pnpmVersion !== expectedPnpmVersion) {
+  throw new Error(`Bundled pnpm version mismatch: expected ${expectedPnpmVersion}, found ${pnpmVersion}`);
+}
 const expectedDshVersion = rootManifest.dependencies["@deepseek-ai/dsh"];
 const stagedDshVersion = JSON.parse(readFileSync(dshManifest, "utf8")).version;
 if (stagedDshVersion !== expectedDshVersion) {

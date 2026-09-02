@@ -1,0 +1,12 @@
+{
+  "name": "deepseek-harness-runtime",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": "24.x"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.1.2-alpha.4"
+  }
+}
