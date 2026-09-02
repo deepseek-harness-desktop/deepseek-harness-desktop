@@ -36,13 +36,6 @@ jobs:
           - os: macos-latest
             target: macos-arm64
             artifact_name: deepseek-harness-pkg-macos-arm64.zip
-          - os: macos-15-intel
-            target: macos-x64
-            artifact_name: deepseek-harness-pkg-macos-x64.zip
-          - os: ubuntu-latest
-            target: linux-x64
-            artifact_name: deepseek-harness-pkg-linux.zip
-
     steps:
       - name: Checkout
         uses: actions/checkout@v7
