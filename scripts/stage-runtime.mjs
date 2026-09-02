@@ -57,7 +57,7 @@ try {
     cwd: deployProject,
     stdio: "inherit",
   });
-  execFileSync(process.execPath, [pnpmCli, "deploy", "--filter", ".", "--prod", deployServer, "--legacy"], {
+  execFileSync(process.execPath, [pnpmCli, "deploy", "--filter", "deepseek-harness-runtime", "--fail-if-no-match", "--prod", deployServer, "--legacy"], {
     cwd: deployProject,
     stdio: "inherit",
   });

@@ -67,7 +67,7 @@ jobs:
           cd runtime
           pnpm add "@deepseek-ai/dsh@${DSH_VERSION}" --save-exact
           pnpm install
-          pnpm deploy --filter . --prod build_dir --legacy
+          pnpm deploy --filter deepseek-harness-runtime --fail-if-no-match --prod build_dir --legacy
           cd build_dir
           node ../../scripts/prepare-harness-core-package.mjs --version="$DSH_VERSION"
           find node_modules -type f \( -name '*.map' -o -name '*.ts' -o -name '*.mts' \) -delete
