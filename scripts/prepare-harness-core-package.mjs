@@ -25,11 +25,18 @@ manifest.dependencies = {
 }
 writeFileSync(packageJsonPath, JSON.stringify(manifest, null, 2) + '\n')
 
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-execFileSync(npmCommand, ['install', '--omit=dev'], {
-  cwd: packageRoot,
-  stdio: 'inherit',
-})
+const npmArgs = ['install', '--omit=dev']
+if (process.platform === 'win32') {
+  execFileSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', 'npm.cmd', ...npmArgs], {
+    cwd: packageRoot,
+    stdio: 'inherit',
+  })
+} else {
+  execFileSync('npm', npmArgs, {
+    cwd: packageRoot,
+    stdio: 'inherit',
+  })
+}
 
 execFileSync(process.execPath, [join(projectRoot, 'scripts/apply-dsh-web-app-patch.mjs')], {
   cwd: packageRoot,
